@@ -9,6 +9,8 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.ManyToOne;
 import jakarta.persistence.Table;
 import jakarta.persistence.Column;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.EnumType;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -37,6 +39,9 @@ public class User {
     private String email;
     
     private String passwordHash;
+    
+    @Enumerated(EnumType.STRING)
+    private Role role;
     
     private LocalDateTime createdAt = LocalDateTime.now();
 }

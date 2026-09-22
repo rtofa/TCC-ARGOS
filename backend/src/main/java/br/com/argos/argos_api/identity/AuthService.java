@@ -41,6 +41,7 @@ public class AuthService {
         user.setName(request.userName());
         user.setEmail(request.email());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
+        user.setRole(Role.ADMIN);
         user = userRepository.save(user);
 
         String token = generateToken(user);
@@ -67,6 +68,7 @@ public class AuthService {
                 .expiresAt(now.plus(1, ChronoUnit.HOURS))
                 .subject(user.getId().toString())
                 .claim("tenant_id", user.getOrganizationId().toString())
+                .claim("role", "ROLE_" + user.getRole().name())
                 .build();
         return jwtEncoder.encode(JwtEncoderParameters.from(claims)).getTokenValue();
     }
