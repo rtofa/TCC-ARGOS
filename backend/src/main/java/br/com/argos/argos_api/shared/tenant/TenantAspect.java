@@ -19,13 +19,10 @@ public class TenantAspect {
             "execution(* br.com.argos.argos_api..*Repository+.*(..))")
     public void setTenantId() {
         String tenantId = TenantContext.getCurrentTenant();
-        if (tenantId != null) {
-            entityManager.createNativeQuery("SET LOCAL app.current_tenant = :tenantId")
-                    .setParameter("tenantId", tenantId)
-                    .executeUpdate();
-        } else {
-            entityManager.createNativeQuery("SET LOCAL app.current_tenant = ''")
-                    .executeUpdate();
-        }
+        // SET does not accept bind parameters in PostgreSQL; set_config does, and as a SELECT
+        // it does not require an active transaction (is_local = true scopes it to the transaction).
+        entityManager.createNativeQuery("SELECT set_config('app.current_tenant', :tenantId, true)")
+                .setParameter("tenantId", tenantId != null ? tenantId : "")
+                .getSingleResult();
     }
 }
