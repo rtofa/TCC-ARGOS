@@ -1,0 +1,61 @@
+{
+  "receiver": "argos",
+  "status": "firing",
+  "orgId": 1,
+  "alerts": [
+    {
+      "status": "firing",
+      "labels": {
+        "alertname": "HighCPU",
+        "grafana_folder": "Produção",
+        "service": "checkout-api",
+        "severity": "critical"
+      },
+      "annotations": {
+        "summary": "CPU acima de 90% no checkout-api",
+        "description": "CPU média de 95% nos últimos 5 minutos"
+      },
+      "startsAt": "2026-09-26T10:00:00Z",
+      "endsAt": "0001-01-01T00:00:00Z",
+      "generatorURL": "http://grafana.local/alerting/grafana/cpu/view",
+      "fingerprint": "c6eadffa33fcdf37",
+      "silenceURL": "http://grafana.local/alerting/silence/new",
+      "dashboardURL": "",
+      "panelURL": "",
+      "values": { "A": 95.2 },
+      "valueString": "[ var='A' labels={service=checkout-api} value=95.2 ]"
+    },
+    {
+      "status": "resolved",
+      "labels": {
+        "alertname": "DiskUsage",
+        "grafana_folder": "Produção",
+        "service": "orders-db",
+        "severity": "warning"
+      },
+      "annotations": {
+        "summary": "Disco acima de 80% no orders-db",
+        "description": "Uso de disco voltou a 60%"
+      },
+      "startsAt": "2026-09-26T09:00:00Z",
+      "endsAt": "2026-09-26T09:40:00Z",
+      "generatorURL": "http://grafana.local/alerting/grafana/disk/view",
+      "fingerprint": "8a91c2b7d4e5f601",
+      "silenceURL": "http://grafana.local/alerting/silence/new",
+      "dashboardURL": "",
+      "panelURL": "",
+      "values": { "A": 60.1 },
+      "valueString": "[ var='A' labels={service=orders-db} value=60.1 ]"
+    }
+  ],
+  "groupLabels": { "grafana_folder": "Produção" },
+  "commonLabels": { "grafana_folder": "Produção" },
+  "commonAnnotations": {},
+  "externalURL": "http://grafana.local/",
+  "version": "1",
+  "groupKey": "{}:{grafana_folder=\"Produção\"}",
+  "truncatedAlerts": 0,
+  "title": "[FIRING:1, RESOLVED:1] (Produção)",
+  "state": "alerting",
+  "message": "**Firing**\n\nValue: A=95.2"
+}
