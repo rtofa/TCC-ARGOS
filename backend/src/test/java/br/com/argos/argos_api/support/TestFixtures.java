@@ -41,7 +41,7 @@ public final class TestFixtures {
      * while they do not exist yet.
      */
     public static void cleanDatabase(JdbcTemplate jdbc) {
-        for (String table : new String[]{"alert_incident_links", "alert_sources", "incident_events", "incidents",
+        for (String table : new String[]{"deploys", "alert_incident_links", "alert_sources", "incident_events", "incidents",
                 "api_keys", "users", "organizations"}) {
             Boolean exists = jdbc.queryForObject("SELECT to_regclass(?) IS NOT NULL", Boolean.class, table);
             if (Boolean.TRUE.equals(exists)) {
