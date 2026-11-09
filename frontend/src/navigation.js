@@ -4,6 +4,7 @@ export const PAGES = [
   { path: '/overview', label: 'Visão geral', icon: 'overview', description: 'Incidentes por severidade, MTTA e MTTR' },
   { path: '/incidents', label: 'Incidentes', icon: 'incidents', description: 'Acompanhe, investigue e resolva' },
   { path: '/deploys', label: 'Deploys', icon: 'deploys', description: 'O que mudou, onde e quando' },
+  { path: '/telemetry', label: 'Telemetria', icon: 'monitor', description: 'Traces, logs e serviços em tempo real' },
   {
     path: '/alert-sources',
     label: 'Fontes de alerta',

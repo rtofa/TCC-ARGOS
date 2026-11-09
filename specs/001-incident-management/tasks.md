@@ -162,7 +162,7 @@ cálculo manual e incidentes pendentes ficam fora da média.
 - [X] T044 Teste de desempenho `TEST/incident/IncidentPerformanceIT.java` (SC-005): inserir 10.000 incidentes na organização A via `INSERT ... SELECT FROM generate_series(1, 10000)` com status, severidade e `opened_at` variados; aquecer uma chamada e então verificar que `GET /api/incidents?status=OPEN&severity=SEV1&openedFrom=...` e `GET /api/incidents/metrics?groupBy=severity` respondem em menos de 2 s cada (medir com `System.nanoTime()`)
 - [X] T045 Rodar a suíte completa `.\mvnw.cmd test` em `backend/` (unidade, integração, desempenho e `ModularityTests`) e corrigir falhas
 - [X] T046 Verificar que a aplicação sobe com o banco de dev (`docker compose up -d` + `.\mvnw.cmd spring-boot:run`) e que o Flyway aplica `V3` sem erro com `ddl-auto=validate`
-- [ ] T047 Executar o roteiro manual de [quickstart.md](quickstart.md) (passos 1–10) — **validação feita pelo desenvolvedor**
+- [x] T047 Executar o roteiro manual de [quickstart.md](quickstart.md) (passos 1–10) — **validação feita pelo desenvolvedor**
 - [X] T048 [P] Atualizar `Status` de [spec.md](spec.md) para `Implemented` e marcar no [plan.md](plan.md) qualquer desvio ocorrido durante a implementação
 
 ---

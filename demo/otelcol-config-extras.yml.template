@@ -1,0 +1,38 @@
+# Camada extra do OpenTelemetry Collector da OpenTelemetry Demo: envia uma copia da telemetria ao Argos.
+# O start-demo substitui __ARGOS_API_KEY__ e copia este arquivo para
+# opentelemetry-demo/src/otel-collector/otelcol-config-extras.yml.
+#
+# Em vez de editar os pipelines da demo (o Collector SUBSTITUI listas, nao as concatena), criamos pipelines
+# paralelos "/argos" que reaproveitam os processadores de saneamento e redacao da propria demo.
+# So o que chega por OTLP vai ao Argos (metricas dos servicos), nao as dezenas de metricas de host/docker.
+exporters:
+  otlphttp/argos:
+    endpoint: http://host.docker.internal:8081/api/webhooks/otlp
+    # O Argos recebe OTLP/JSON, sem compressao.
+    encoding: json
+    compression: none
+    headers:
+      X-API-Key: "__ARGOS_API_KEY__"
+    retry_on_failure:
+      enabled: true
+      max_elapsed_time: 60s
+
+processors:
+  batch/argos:
+    timeout: 5s
+    send_batch_size: 2000
+
+service:
+  pipelines:
+    traces/argos:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/sanitize_spans, transform/redact_sensitive_data, redaction, batch/argos]
+      exporters: [otlphttp/argos]
+    logs/argos:
+      receivers: [otlp]
+      processors: [memory_limiter, transform/sanitize_logs, batch/argos]
+      exporters: [otlphttp/argos]
+    metrics/argos:
+      receivers: [otlp]
+      processors: [memory_limiter, batch/argos]
+      exporters: [otlphttp/argos]

@@ -8,6 +8,7 @@ import Overview from './pages/Overview.jsx'
 import Incidents from './pages/Incidents.jsx'
 import IncidentDetail from './pages/IncidentDetail.jsx'
 import Deploys from './pages/Deploys.jsx'
+import Telemetry from './pages/Telemetry.jsx'
 import AlertSources from './pages/AlertSources.jsx'
 import ApiKeys from './pages/ApiKeys.jsx'
 
@@ -29,6 +30,7 @@ export default function App() {
             <Route path="incidents" element={<Incidents />} />
             <Route path="incidents/:id" element={<IncidentDetail />} />
             <Route path="deploys" element={<Deploys />} />
+            <Route path="telemetry" element={<Telemetry />} />
             <Route path="alert-sources" element={<AlertSources />} />
             <Route path="settings/api-keys" element={<ApiKeys />} />
           </Route>

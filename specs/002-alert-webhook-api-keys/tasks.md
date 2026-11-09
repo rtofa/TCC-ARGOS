@@ -129,7 +129,7 @@ e 20 envios simultâneos resultando em 1 incidente.
 
 - [X] T040 Rodar a suíte completa `.\mvnw.cmd test` (MON-10 + 002 + `ModularityTests`) e corrigir falhas
 - [X] T041 Subir a API com o banco de dev (`docker compose up -d` + `.\mvnw.cmd spring-boot:run`), confirmar Flyway `V4` sem erro com `ddl-auto=validate` e executar os passos 1–5 do [quickstart.md](quickstart.md) via curl
-- [ ] T042 Executar o roteiro manual completo do [quickstart.md](quickstart.md) (passos 1–7) — **validação feita pelo desenvolvedor**
+- [x] T042 Executar o roteiro manual completo do [quickstart.md](quickstart.md) (passos 1–7) — **validação feita pelo desenvolvedor**
 - [X] T043 [P] Atualizar `Status` de [spec.md](spec.md) e registrar em [plan.md](plan.md) os desvios ocorridos na implementação
 
 ---
