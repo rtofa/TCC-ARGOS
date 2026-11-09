@@ -52,3 +52,11 @@ export function timeAgo(iso, now = Date.now()) {
 
 export const formatDateTime = (iso) =>
   iso ? new Date(iso).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' }) : '—'
+
+/** 0.4 -> "400 µs", 12.3 -> "12 ms", 2500 -> "2.50 s". */
+export function formatMs(ms) {
+  if (ms === null || ms === undefined) return '—'
+  if (ms < 1) return `${(ms * 1000).toFixed(0)} µs`
+  if (ms < 1000) return `${ms.toFixed(ms < 10 ? 1 : 0)} ms`
+  return `${(ms / 1000).toFixed(2)} s`
+}

@@ -405,3 +405,33 @@ code.mono { padding: 1px 5px; background: #f1f2f7; border-radius: 4px; }
   .spinner { animation-duration: 3s; }
   .bar-fill, .is-refreshing { transition: none; }
 }
+
+/* Telemetria: abas, cascata de spans e logs */
+.tabs { display: flex; gap: 8px; margin: 16px 0 12px; }
+.filters label { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+.filters label.inline { gap: 6px; }
+.filters label.inline input { width: auto; }
+.btn-link { padding: 0; border: 0; background: none; color: var(--primary); font: inherit; font-weight: 600; cursor: pointer; }
+.btn-link:hover { text-decoration: underline; }
+.card-header .btn-link { margin-left: 12px; }
+.text-danger { color: #b3261e; font-weight: 600; }
+.row-selected { background: var(--primary-soft); }
+.card h3 { margin: 16px 0 8px; font-size: 13px; color: var(--muted); }
+
+.waterfall { list-style: none; margin: 0; padding: 0; }
+.wf-row { display: grid; grid-template-columns: minmax(180px, 38%) 1fr; gap: 12px; align-items: center; padding: 4px 0; border-bottom: 1px solid #eef0f6; font-size: 13px; }
+.wf-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wf-track { position: relative; height: 18px; background: #f3f5fa; border-radius: 3px; }
+.wf-bar { position: absolute; top: 3px; bottom: 3px; border-radius: 2px; background: var(--primary); }
+.wf-error .wf-bar { background: #b3261e; }
+.wf-time { position: absolute; right: 6px; top: 0; line-height: 18px; font-size: 11px; color: var(--muted); }
+.wf-badge { margin-left: 6px; background: #fde8e6; color: #b3261e; }
+
+.log-list { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.log-list li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 6px 0; border-bottom: 1px solid #eef0f6; }
+.log-body { flex: 1 1 300px; word-break: break-word; }
+.log-level { min-width: 48px; justify-content: center; }
+.log-error .log-level { background: #fde8e6; color: #b3261e; }
+.log-warn .log-level { background: #fff3d6; color: #8a5a00; }
+.trace-list { list-style: none; margin: 0 0 8px; padding: 0; }
+.trace-list li { padding: 6px 0; border-bottom: 1px solid #eef0f6; }
