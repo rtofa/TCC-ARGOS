@@ -21,6 +21,11 @@ class TelemetryExceptionHandler {
         return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Requisicao invalida");
     }
 
+    @ExceptionHandler(TraceNotFoundException.class)
+    ProblemDetail handleNotFound(TraceNotFoundException ex) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.NOT_FOUND, ex.getMessage());
+    }
+
     @ExceptionHandler(PayloadTooLargeException.class)
     ProblemDetail handleTooLarge(PayloadTooLargeException ex) {
         return ProblemDetail.forStatusAndDetail(HttpStatus.CONTENT_TOO_LARGE, ex.getMessage());
