@@ -1,0 +1,31 @@
+# Camada de compose aplicada por cima do compose.yaml da OpenTelemetry Demo:
+# - mapeia host.docker.internal para o Collector alcancar o Argos no Linux e no Windows;
+# - ajusta o healthcheck e o endpoint OTLP do recommendation (na imagem :latest ele e Java e nao traz o binario nc);
+# - eleva o limite de memoria de product-catalog e checkout (20 MB e pouco para rodar o grpc_health_probe no WSL2).
+services:
+  otel-collector:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  recommendation:
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/${RECOMMENDATION_PORT}'"]
+      start_period: 20s
+
+  product-catalog:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    environment:
+      - GOMEMLIMIT=48MiB
+
+  checkout:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+    environment:
+      - GOMEMLIMIT=48MiB
