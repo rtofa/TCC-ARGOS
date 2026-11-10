@@ -4,50 +4,105 @@ import { query } from '../api.js'
 import { useApi } from '../hooks/useApi.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import TraceWaterfall, { LogList } from '../components/TraceWaterfall.jsx'
+import ServiceTopologyGraph from '../components/ServiceTopologyGraph.jsx'
+import RedCharts from '../components/RedCharts.jsx'
 import { formatMs, timeAgo } from '../format.js'
 
 const PERIODS = { '15m': 15, '1h': 60, '6h': 360, '24h': 1440 }
-const TABS = { services: 'Serviços', traces: 'Traces', logs: 'Logs' }
+const TABS = {
+  services: 'Serviços & Topologia',
+  red: 'Métricas RED',
+  traces: 'Traces',
+  logs: 'Logs',
+}
 const LEVELS = ['', 'INFO', 'WARN', 'ERROR']
 
 const currentMinute = () => Math.floor(Date.now() / 60000) * 60000
 
-function ServicesTab({ window, onPick }) {
+function ServicesTab({ window, onPickTraces, onPickRed }) {
   const { data, error, reload } = useApi(`/telemetry/services${query(window)}`, 5000)
+  const topology = useApi(`/telemetry/topology${query(window)}`, 5000)
+
   if (error) return <ErrorState error={error} onRetry={reload} />
   if (!data) return <Loading />
   if (!data.length) return <EmptyTelemetry />
   return (
-    <div className="table-scroll card">
-      <table className="table">
-        <thead>
-          <tr>
-            <th>Serviço</th>
-            <th>Spans</th>
-            <th>Spans com erro</th>
-            <th>Logs</th>
-            <th>Logs de erro</th>
-            <th>Último sinal</th>
-          </tr>
-        </thead>
-        <tbody>
-          {data.map((s) => (
-            <tr key={s.service}>
-              <td>
-                <button type="button" className="btn btn-link" onClick={() => onPick(s.service)}>
-                  {s.service}
-                </button>
-              </td>
-              <td>{s.spans}</td>
-              <td className={s.errorSpans ? 'text-danger' : ''}>{s.errorSpans}</td>
-              <td>{s.logs}</td>
-              <td className={s.errorLogs ? 'text-danger' : ''}>{s.errorLogs}</td>
-              <td className="muted">{timeAgo(s.lastSeen)}</td>
+    <>
+      <section className="card">
+        <div className="card-header">
+          <div>
+            <h2>Grafo automático de dependência entre microsserviços (Service Topology Map)</h2>
+            <p className="muted small no-margin">
+              Desenhado automaticamente a partir de parent_span_id → span_id nos traces OTLP; clique em um nó para abrir
+              as Métricas RED do serviço
+            </p>
+          </div>
+        </div>
+        {topology.data ? (
+          <ServiceTopologyGraph topology={topology.data} onSelectService={onPickRed} />
+        ) : (
+          <Loading />
+        )}
+      </section>
+
+      <div className="table-scroll card">
+        <table className="table">
+          <thead>
+            <tr>
+              <th>Serviço</th>
+              <th>Spans</th>
+              <th>Spans com erro</th>
+              <th>Logs</th>
+              <th>Logs de erro</th>
+              <th>Último sinal</th>
+              <th>Ações</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </thead>
+          <tbody>
+            {data.map((s) => (
+              <tr key={s.service}>
+                <td>
+                  <button type="button" className="btn btn-link" onClick={() => onPickTraces(s.service)}>
+                    {s.service}
+                  </button>
+                </td>
+                <td>{s.spans}</td>
+                <td className={s.errorSpans ? 'text-danger' : ''}>{s.errorSpans}</td>
+                <td>{s.logs}</td>
+                <td className={s.errorLogs ? 'text-danger' : ''}>{s.errorLogs}</td>
+                <td className="muted">{timeAgo(s.lastSeen)}</td>
+                <td className="nowrap">
+                  <button type="button" className="link-button" onClick={() => onPickRed(s.service)}>
+                    Métricas RED
+                  </button>
+                  {' · '}
+                  <button type="button" className="link-button" onClick={() => onPickTraces(s.service)}>
+                    Traces
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
+  )
+}
+
+function RedTab({ window, service }) {
+  const red = useApi(`/telemetry/red${query({ ...window, service })}`, 5000)
+  const deploys = useApi(`/deploys${query({ from: window.from, service: service || undefined, size: 50 })}`, 5000)
+  const incidents = useApi(`/incidents${query({ openedFrom: window.from, size: 50 })}`, 5000)
+
+  if (red.error) return <ErrorState error={red.error} onRetry={red.reload} />
+  if (!red.data) return <Loading />
+  return (
+    <RedCharts
+      red={red.data}
+      deploys={deploys.data?.content ?? []}
+      incidents={incidents.data?.content ?? []}
+      service={service}
+    />
   )
 }
 
@@ -154,7 +209,7 @@ export default function Telemetry() {
       <header className="page-header">
         <div>
           <h1>Telemetria</h1>
-          <p className="muted">Traces, logs e serviços recebidos via OpenTelemetry</p>
+          <p className="muted">Topologia de microsserviços, métricas RED, traces e logs via OpenTelemetry</p>
         </div>
         <button type="button" className="btn" onClick={() => update({})}>
           Atualizar
@@ -227,7 +282,14 @@ export default function Telemetry() {
         )}
       </section>
 
-      {tab === 'services' && <ServicesTab window={window} onPick={(s) => update({ tab: 'traces', service: s })} />}
+      {tab === 'services' && (
+        <ServicesTab
+          window={window}
+          onPickTraces={(s) => update({ tab: 'traces', service: s })}
+          onPickRed={(s) => update({ tab: 'red', service: s })}
+        />
+      )}
+      {tab === 'red' && <RedTab window={window} service={service} />}
       {tab === 'traces' && (
         <TracesTab
           window={window}
@@ -241,4 +303,3 @@ export default function Telemetry() {
     </>
   )
 }
-

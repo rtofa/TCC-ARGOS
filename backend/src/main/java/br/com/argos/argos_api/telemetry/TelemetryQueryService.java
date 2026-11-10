@@ -4,8 +4,13 @@ import br.com.argos.argos_api.shared.security.CurrentUser;
 import br.com.argos.argos_api.telemetry.TelemetryViews.LogView;
 import br.com.argos.argos_api.telemetry.TelemetryViews.MetricPoint;
 import br.com.argos.argos_api.telemetry.TelemetryViews.MetricSeries;
+import br.com.argos.argos_api.telemetry.TelemetryViews.RedBucket;
+import br.com.argos.argos_api.telemetry.TelemetryViews.RedSeries;
 import br.com.argos.argos_api.telemetry.TelemetryViews.ServiceSummary;
+import br.com.argos.argos_api.telemetry.TelemetryViews.ServiceTopology;
 import br.com.argos.argos_api.telemetry.TelemetryViews.SpanView;
+import br.com.argos.argos_api.telemetry.TelemetryViews.TopologyEdge;
+import br.com.argos.argos_api.telemetry.TelemetryViews.TopologyNode;
 import br.com.argos.argos_api.telemetry.TelemetryViews.TraceDetail;
 import br.com.argos.argos_api.telemetry.TelemetryViews.TraceSummary;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -250,6 +255,209 @@ public class TelemetryQueryService {
         List<MetricPoint> ascending = new ArrayList<>(points);
         java.util.Collections.reverse(ascending);
         return ascending;
+    }
+
+    /**
+     * Builds the live service dependency graph from parent-child OTLP spans within each trace,
+     * distinguishing root-cause failing services from upstream services suffering cascading errors.
+     */
+    public ServiceTopology topology(Instant from, Instant to) {
+        UUID org = currentUser.get().organizationId();
+        Window window = window(from, to);
+        Timestamp start = ts(window.from());
+        Timestamp end = ts(window.to());
+
+        List<TopologyEdge> edges = jdbc.query("""
+                SELECT p.service AS source,
+                       c.service AS target,
+                       count(*) AS calls,
+                       count(*) FILTER (WHERE c.status_code = 2) AS errors,
+                       COALESCE(avg(c.duration_ns) / 1e6, 0) AS avg_duration_ms,
+                       COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY c.duration_ns) / 1e6, 0) AS p95_duration_ms
+                FROM telemetry_spans c
+                JOIN telemetry_spans p
+                  ON p.organization_id = c.organization_id
+                 AND p.trace_id = c.trace_id
+                 AND p.span_id = c.parent_span_id
+                WHERE c.organization_id = ?
+                  AND c.start_time >= ? AND c.start_time <= ?
+                  AND p.service <> c.service
+                  AND p.service NOT IN ('load-generator', 'otelcol-contrib', 'flagd', 'flagd-ui', 'telemetry-docs', 'unknown_service')
+                  AND c.service NOT IN ('load-generator', 'otelcol-contrib', 'flagd', 'flagd-ui', 'telemetry-docs', 'unknown_service')
+                GROUP BY p.service, c.service
+                ORDER BY calls DESC, source, target
+                """, (rs, row) -> {
+            long calls = rs.getLong("calls");
+            long errors = rs.getLong("errors");
+            return new TopologyEdge(
+                    rs.getString("source"),
+                    rs.getString("target"),
+                    calls,
+                    errors,
+                    calls == 0 ? 0.0 : round2((errors * 100.0) / calls),
+                    round2(rs.getDouble("avg_duration_ms")),
+                    round2(rs.getDouble("p95_duration_ms")));
+        }, org, start, end);
+
+        record RawNode(String service, long spans, long errorSpans, double avgMs, double p95Ms) {
+        }
+        List<RawNode> rawNodes = jdbc.query("""
+                SELECT service,
+                       count(*) AS spans,
+                       count(*) FILTER (WHERE status_code = 2) AS error_spans,
+                       COALESCE(avg(duration_ns) / 1e6, 0) AS avg_duration_ms,
+                       COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p95_duration_ms
+                FROM telemetry_spans
+                WHERE organization_id = ?
+                  AND start_time >= ? AND start_time <= ?
+                  AND service NOT IN ('load-generator', 'otelcol-contrib', 'flagd', 'flagd-ui', 'telemetry-docs', 'unknown_service')
+                  AND name NOT LIKE 'flagd.evaluation.%'
+                GROUP BY service
+                ORDER BY service
+                """, (rs, row) -> new RawNode(
+                rs.getString("service"),
+                rs.getLong("spans"),
+                rs.getLong("error_spans"),
+                rs.getDouble("avg_duration_ms"),
+                rs.getDouble("p95_duration_ms")), org, start, end);
+
+        java.util.Set<String> errorServices = new java.util.HashSet<>();
+        for (RawNode n : rawNodes) {
+            if (n.errorSpans() > 0) {
+                errorServices.add(n.service());
+            }
+        }
+
+        List<TopologyNode> nodes = new ArrayList<>();
+        boolean anyRootCause = false;
+        for (RawNode n : rawNodes) {
+            boolean hasFailingDownstream = edges.stream()
+                    .anyMatch(e -> e.source().equals(n.service()) && (e.errors() > 0 || errorServices.contains(e.target())));
+            boolean rootCause = n.errorSpans() > 0 && !hasFailingDownstream;
+            if (rootCause) {
+                anyRootCause = true;
+            }
+            nodes.add(new TopologyNode(
+                    n.service(),
+                    n.spans(),
+                    n.errorSpans(),
+                    n.spans() == 0 ? 0.0 : round2((n.errorSpans() * 100.0) / n.spans()),
+                    round2(n.avgMs()),
+                    round2(n.p95Ms()),
+                    rootCause));
+        }
+
+        // Fallback if a cycle prevented any failing service from being marked as root-cause
+        if (!errorServices.isEmpty() && !anyRootCause) {
+            int worstIdx = -1;
+            double worstRate = -1;
+            for (int i = 0; i < nodes.size(); i++) {
+                TopologyNode n = nodes.get(i);
+                if (n.errorSpans() > 0 && n.errorRatePercent() > worstRate) {
+                    worstRate = n.errorRatePercent();
+                    worstIdx = i;
+                }
+            }
+            if (worstIdx >= 0) {
+                TopologyNode w = nodes.get(worstIdx);
+                nodes.set(worstIdx, new TopologyNode(w.service(), w.spans(), w.errorSpans(),
+                        w.errorRatePercent(), w.avgDurationMs(), w.p95DurationMs(), true));
+            }
+        }
+
+        return new ServiceTopology(window.from(), window.to(), nodes, edges);
+    }
+
+    /**
+     * RED time series (Rate in req/min, Error rate in %, Duration p50/p95/p99 in ms) for a service or all services.
+     */
+    public RedSeries red(String service, Instant from, Instant to) {
+        UUID org = currentUser.get().organizationId();
+        Window window = window(from, to);
+        long windowSeconds = Math.max(60L, Duration.between(window.from(), window.to()).getSeconds());
+        long stepSeconds = windowSeconds <= 1800 ? 60
+                : windowSeconds <= 7200 ? 120
+                : windowSeconds <= 21600 ? 300 : 900;
+
+        String cleanService = service != null && !service.isBlank() ? service.trim() : null;
+        List<Object> bucketParams = new ArrayList<>(List.of(stepSeconds, stepSeconds, org, ts(window.from()), ts(window.to())));
+        List<Object> summaryParams = new ArrayList<>(List.of(org, ts(window.from()), ts(window.to())));
+        String serviceClause = "";
+        if (cleanService != null) {
+            serviceClause = " AND service = ?";
+            bucketParams.add(cleanService);
+            summaryParams.add(cleanService);
+        }
+
+        List<RedBucket> buckets = jdbc.query("""
+                SELECT to_timestamp(floor(extract(epoch from start_time) / ?) * ?) AS bucket,
+                       count(*) AS requests,
+                       count(*) FILTER (WHERE status_code = 2) AS errors,
+                       COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p50_ms,
+                       COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p95_ms,
+                       COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p99_ms
+                FROM telemetry_spans
+                WHERE organization_id = ?
+                  AND start_time >= ? AND start_time <= ?
+                  AND name NOT LIKE 'flagd.evaluation.%'""" + serviceClause + """
+
+                GROUP BY bucket
+                ORDER BY bucket ASC
+                """, (rs, row) -> {
+            long requests = rs.getLong("requests");
+            long errors = rs.getLong("errors");
+            return new RedBucket(
+                    rs.getTimestamp("bucket").toInstant(),
+                    requests,
+                    errors,
+                    round2(requests * (60.0 / stepSeconds)),
+                    requests == 0 ? 0.0 : round2((errors * 100.0) / requests),
+                    round2(rs.getDouble("p50_ms")),
+                    round2(rs.getDouble("p95_ms")),
+                    round2(rs.getDouble("p99_ms")));
+        }, bucketParams.toArray());
+
+        record SummaryRow(long requests, long errors, double p50, double p95, double p99) {
+        }
+        SummaryRow summary = jdbc.queryForObject("""
+                SELECT count(*) AS requests,
+                       count(*) FILTER (WHERE status_code = 2) AS errors,
+                       COALESCE(percentile_cont(0.50) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p50_ms,
+                       COALESCE(percentile_cont(0.95) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p95_ms,
+                       COALESCE(percentile_cont(0.99) WITHIN GROUP (ORDER BY duration_ns) / 1e6, 0) AS p99_ms
+                FROM telemetry_spans
+                WHERE organization_id = ?
+                  AND start_time >= ? AND start_time <= ?
+                  AND name NOT LIKE 'flagd.evaluation.%'""" + serviceClause,
+                (rs, row) -> new SummaryRow(
+                        rs.getLong("requests"),
+                        rs.getLong("errors"),
+                        rs.getDouble("p50_ms"),
+                        rs.getDouble("p95_ms"),
+                        rs.getDouble("p99_ms")),
+                summaryParams.toArray());
+
+        long totalReq = summary == null ? 0 : summary.requests();
+        long totalErr = summary == null ? 0 : summary.errors();
+        double windowMinutes = Math.max(1.0, windowSeconds / 60.0);
+
+        return new RedSeries(
+                window.from(),
+                window.to(),
+                cleanService,
+                stepSeconds,
+                totalReq,
+                totalErr,
+                round2(totalReq / windowMinutes),
+                totalReq == 0 ? 0.0 : round2((totalErr * 100.0) / totalReq),
+                round2(summary == null ? 0.0 : summary.p50()),
+                round2(summary == null ? 0.0 : summary.p95()),
+                round2(summary == null ? 0.0 : summary.p99()),
+                buckets);
+    }
+
+    private static double round2(double value) {
+        return Math.round(value * 100.0) / 100.0;
     }
 
     private Window window(Instant from, Instant to) {
