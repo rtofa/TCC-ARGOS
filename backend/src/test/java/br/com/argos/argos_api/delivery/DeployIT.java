@@ -200,4 +200,71 @@ class DeployIT extends AbstractIntegrationTest {
                 .andExpect(jsonPath("$.correlatedIncidents[0].author").value("ci-bot"))
                 .andExpect(jsonPath("$.correlatedIncidents[0].minutesAfterDeploy").value(4));
     }
+
+    @Test
+    void qualityGateApprovesCleanServiceAndBlocksWhenSev1OrCriticalAlertExists() throws Exception {
+        // 1. Clean state -> PASSED (200 OK even with strict=true)
+        mockMvc.perform(get("/api/webhooks/deploys/quality-gate")
+                        .header("X-API-Key", keyA)
+                        .param("service", "checkout-api")
+                        .param("strict", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowed").value(true))
+                .andExpect(jsonPath("$.status").value("PASSED"))
+                .andExpect(jsonPath("$.openSev1Incidents").value(0));
+
+        // 2. Open SEV1 incident on checkout-api -> BLOCKED (409 Conflict with strict=true, 200 OK on UI endpoint)
+        java.util.UUID sev1Id = java.util.UUID.randomUUID();
+        jdbc.update("""
+                INSERT INTO incidents (id, organization_id, title, severity, status, source, affected_services,
+                                       created_by, opened_at, updated_at)
+                VALUES (?, ?, 'Queda crítica no checkout', 'SEV1', 'OPEN', 'MANUAL', ARRAY['checkout-api'],
+                        ?, now(), now())
+                """, sev1Id, orgA, adminA);
+
+        mockMvc.perform(get("/api/webhooks/deploys/quality-gate")
+                        .header("X-API-Key", keyA)
+                        .param("service", "checkout-api")
+                        .param("strict", "true"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.allowed").value(false))
+                .andExpect(jsonPath("$.status").value("BLOCKED"))
+                .andExpect(jsonPath("$.openSev1Incidents").value(1))
+                .andExpect(jsonPath("$.blockingIncidents", hasSize(1)))
+                .andExpect(jsonPath("$.blockingIncidents[0].title").value("Queda crítica no checkout"));
+
+        // Unrelated service (catalog-api) is still PASSED
+        mockMvc.perform(get("/api/webhooks/deploys/quality-gate")
+                        .header("X-API-Key", keyA)
+                        .param("service", "catalog-api")
+                        .param("strict", "true"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowed").value(true))
+                .andExpect(jsonPath("$.status").value("PASSED"));
+
+        // UI endpoint (/api/deploys/quality-gate) returns status for logged-in user
+        mockMvc.perform(get("/api/deploys/quality-gate").with(asViewerA())
+                        .param("service", "checkout-api"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.allowed").value(false))
+                .andExpect(jsonPath("$.status").value("BLOCKED"));
+
+        // 3. Resolve SEV1 incident, open a critical ALERT monitor incident (SEV2 + source=ALERT) -> still BLOCKED
+        jdbc.update("UPDATE incidents SET status = 'RESOLVED', resolved_at = now() WHERE id = ?", sev1Id);
+        jdbc.update("""
+                INSERT INTO incidents (id, organization_id, title, severity, status, source, affected_services,
+                                       created_by, opened_at, updated_at)
+                VALUES (?, ?, '[SLO OTLP] Latência crítica em checkout-api', 'SEV2', 'INVESTIGATING', 'ALERT',
+                        ARRAY['checkout-api'], ?, now(), now())
+                """, java.util.UUID.randomUUID(), orgA, adminA);
+
+        mockMvc.perform(get("/api/webhooks/deploys/quality-gate")
+                        .header("X-API-Key", keyA)
+                        .param("service", "checkout-api")
+                        .param("strict", "true"))
+                .andExpect(status().isConflict())
+                .andExpect(jsonPath("$.allowed").value(false))
+                .andExpect(jsonPath("$.openSev1Incidents").value(0))
+                .andExpect(jsonPath("$.openCriticalAlerts").value(1));
+    }
 }

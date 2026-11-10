@@ -13,10 +13,11 @@ concurrency:
 
 permissions:
   contents: read
+  security-events: write
 
 jobs:
   backend:
-    name: Backend (build e testes)
+    name: Backend (build, modularidade e testes)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     defaults:
@@ -31,9 +32,9 @@ jobs:
           java-version: '17'
           cache: maven
 
-      # Testes unitários e de integração (*IT); o PostgreSQL sobe via Testcontainers no Docker do runner.
+      # Testes unitários, arquitetura modular (ModularityTests), isolamento RLS (MultiTenantIsolationIT) e integração (*IT).
       - name: Build e testes
-        run: ./mvnw -B -ntp verify
+        run: ./mvnw -B -ntp verify -Dtest="!ArgosBenchmarkIT"
 
       - name: Publicar relatórios de teste
         if: failure()
@@ -62,3 +63,62 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm run build
+
+  security:
+    name: Segurança (Auditoria SCA e Análise Estática)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Auditoria de dependências NPM (SCA)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Varredura de vulnerabilidades OWASP / CVE (Trivy FS)
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          scanners: 'vuln,secret,misconfig'
+          severity: 'CRITICAL,HIGH'
+          ignore-unfixed: true
+          exit-code: '0'
+
+  quality-gate:
+    name: Quality Gate de Deploy (Argos SEV1 / SLO Gate)
+    needs: [backend, frontend, security]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verificar Quality Gate no Argos antes do deploy
+        if: vars.ARGOS_API_URL != '' && secrets.ARGOS_API_KEY != ''
+        env:
+          ARGOS_API_URL: ${{ vars.ARGOS_API_URL }}
+          ARGOS_API_KEY: ${{ secrets.ARGOS_API_KEY }}
+          ARGOS_SERVICE: ${{ vars.ARGOS_SERVICE || 'argos-api' }}
+        run: bash scripts/quality-gate.sh
+
+      - name: Registrar deploy aprovado no Argos
+        if: success() && vars.ARGOS_API_URL != '' && secrets.ARGOS_API_KEY != ''
+        run: |
+          curl -sf -X POST "${{ vars.ARGOS_API_URL }}/webhooks/deploys" \
+            -H "X-API-Key: ${{ secrets.ARGOS_API_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d "{
+              \"service\": \"${{ vars.ARGOS_SERVICE || 'argos-api' }}\",
+              \"version\": \"${{ github.ref_name }}-${{ github.run_number }}\",
+              \"environment\": \"production\",
+              \"commitSha\": \"${{ github.sha }}\",
+              \"author\": \"${{ github.actor }}\",
+              \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
+            }"
