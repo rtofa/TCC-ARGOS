@@ -49,6 +49,13 @@ public class AlertProcessor {
         return WebhookResult.of(results);
     }
 
+    /** Called by internal monitors (e.g. OTLP anomaly detection) to open or resolve an incident from live signals. */
+    public AlertResult reportSignal(ApiKeyPrincipal key, String sourceName, String dedupKey, boolean firing,
+                                    String title, String description, String severity, List<String> services) {
+        return processOne(key, null, sourceName, new MappedAlert(0, title, dedupKey,
+                firing ? AlertStatus.FIRING : AlertStatus.RESOLVED, severity, services, description, null));
+    }
+
     private AlertResult processOne(ApiKeyPrincipal key, UUID sourceId, String sourceName, MappedAlert alert) {
         if (alert.rejected()) {
             return AlertResult.rejected(alert.index(), alert.dedupKey(), alert.rejectionReason());

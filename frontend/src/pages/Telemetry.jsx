@@ -1,4 +1,4 @@
-﻿import { useState } from 'react'
+import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { query } from '../api.js'
 import { useApi } from '../hooks/useApi.js'
@@ -13,7 +13,7 @@ const LEVELS = ['', 'INFO', 'WARN', 'ERROR']
 const currentMinute = () => Math.floor(Date.now() / 60000) * 60000
 
 function ServicesTab({ window, onPick }) {
-  const { data, error, reload } = useApi(`/telemetry/services${query(window)}`)
+  const { data, error, reload } = useApi(`/telemetry/services${query(window)}`, 5000)
   if (error) return <ErrorState error={error} onRetry={reload} />
   if (!data) return <Loading />
   if (!data.length) return <EmptyTelemetry />
@@ -54,6 +54,7 @@ function ServicesTab({ window, onPick }) {
 function TracesTab({ window, service, onlyErrors, selected, onSelect }) {
   const { data, error, reload } = useApi(
     `/telemetry/traces${query({ ...window, service, status: onlyErrors ? 'ERROR' : undefined, limit: 50 })}`,
+    5000,
   )
   return (
     <>
@@ -101,7 +102,7 @@ function TracesTab({ window, service, onlyErrors, selected, onSelect }) {
 }
 
 function LogsTab({ window, service, level, text }) {
-  const { data, error, reload } = useApi(`/telemetry/logs${query({ ...window, service, level, q: text, limit: 200 })}`)
+  const { data, error, reload } = useApi(`/telemetry/logs${query({ ...window, service, level, q: text, limit: 200 })}`, 5000)
   if (error) return <ErrorState error={error} onRetry={reload} />
   if (!data) return <Loading />
   return (

@@ -122,4 +122,16 @@ class OtlpIngestIT extends AbstractIntegrationTest {
                         .contentType("application/x-protobuf").content(new byte[]{1, 2, 3}))
                 .andExpect(status().isUnsupportedMediaType());
     }
+
+    @Test
+    void automaticallyOpensIncidentWhenServiceHasHighSpanErrorRate() throws Exception {
+        send("traces", keyA, OtlpPayloads.traces("payment",
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c11", null, "POST /charge", now.minusSeconds(10), 90, true),
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c12", null, "POST /charge", now.minusSeconds(5), 85, true),
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c13", null, "POST /charge", now, 110, true)))
+                .andExpect(status().isOk());
+
+        assertThat(count("incidents", orgA)).isEqualTo(1);
+        assertThat(count("incidents", orgB)).isZero();
+    }
 }

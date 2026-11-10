@@ -93,7 +93,7 @@ function StatusStrip({ byStatus, total }) {
 
 export default function Overview() {
   const [period, setPeriod] = useState('24h')
-  const { data, error, loading, reload } = useAsync(period, loadHome)
+  const { data, error, loading, reload } = useAsync(period, loadHome, 5000)
 
   return (
     <>

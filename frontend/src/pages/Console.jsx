@@ -18,7 +18,8 @@ const ACTIVE = ['OPEN', 'INVESTIGATING', 'MITIGATED']
 const SEVERITY_RANK = { SEV1: 0, SEV2: 1, SEV3: 2, SEV4: 3 }
 const STATUS_ORDER = { critical: 0, warning: 1, good: 2 }
 const STATUS_TEXT = { good: 'Operacional', warning: 'Incidente ativo', critical: 'Incidente crítico' }
-const MAX_TILES = 12
+const MAX_TILES = 16
+const INFRA_SERVICES = new Set(['otelcol-contrib', 'load-generator', 'flagd', 'flagd-ui', 'telemetry-docs', 'smoke'])
 
 const optional = (promise) => promise.catch(() => null)
 const dayKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
@@ -30,13 +31,14 @@ async function loadConsole(role) {
   chartStart.setDate(chartStart.getDate() - (CHART_DAYS - 1))
   const weekAgo = new Date(now - 7 * DAY_MS).toISOString()
 
-  const [active, recent, deploys, weekDeploys, anyIncident, metrics, sources, keys] = await Promise.all([
+  const [active, recent, deploys, weekDeploys, anyIncident, metrics, telemetryServices, sources, keys] = await Promise.all([
     api.get(`/incidents${query({ status: ACTIVE, size: 100 })}`),
     api.get(`/incidents${query({ openedFrom: chartStart.toISOString(), size: 100 })}`),
     api.get(`/deploys${query({ size: 50 })}`),
     api.get(`/deploys${query({ from: weekAgo, size: 1 })}`),
     api.get(`/incidents${query({ size: 1 })}`),
     api.get(`/incidents/metrics${query({ openedFrom: weekAgo })}`),
+    optional(api.get('/telemetry/services')),
     optional(api.get('/alert-sources')),
     role === 'ADMIN' ? optional(api.get('/api-keys')) : Promise.resolve(null),
   ])
@@ -49,6 +51,7 @@ async function loadConsole(role) {
     weekDeploys: weekDeploys.totalElements,
     hasIncidents: anyIncident.totalElements > 0,
     metrics: metrics.overall,
+    telemetryServices: (telemetryServices ?? []).filter((s) => !INFRA_SERVICES.has(s.service)),
     sources,
     keys,
   }
@@ -77,12 +80,21 @@ function dailyCounts(incidents, chartStart, now) {
   return days
 }
 
-/** Services named by incidents or deploys; status comes from the worst active incident touching them. */
-function buildServices(active, recent, deploys) {
+/** Services discovered via OpenTelemetry, incidents or deploys; status reflects active incidents and live OTLP errors. */
+function buildServices(active, recent, deploys, telemetryServices = []) {
   const services = new Map()
   const entry = (name) => {
-    if (!services.has(name)) services.set(name, { name, worst: null, incident: null, activeCount: 0, lastDeploy: null })
+    if (!services.has(name)) {
+      services.set(name, { name, worst: null, incident: null, activeCount: 0, lastDeploy: null, spans: 0, errorSpans: 0, logs: 0, errorLogs: 0 })
+    }
     return services.get(name)
+  }
+  for (const t of telemetryServices) {
+    const service = entry(t.service)
+    service.spans = t.spans
+    service.errorSpans = t.errorSpans
+    service.logs = t.logs
+    service.errorLogs = t.errorLogs
   }
   for (const incident of active) {
     for (const name of incident.affectedServices) {
@@ -100,11 +112,20 @@ function buildServices(active, recent, deploys) {
     if (!service.lastDeploy) service.lastDeploy = deploy // newest first
   }
   return [...services.values()]
-    .map((service) => ({
-      ...service,
-      status: !service.worst ? 'good' : SEVERITY_RANK[service.worst] <= 1 ? 'critical' : 'warning',
-      to: service.incident ? `/incidents/${service.incident.id}` : `/deploys?service=${encodeURIComponent(service.name)}`,
-    }))
+    .map((service) => {
+      const status = service.worst
+        ? SEVERITY_RANK[service.worst] <= 1
+          ? 'critical'
+          : 'warning'
+        : service.errorSpans > 0
+          ? 'warning'
+          : 'good'
+      return {
+        ...service,
+        status,
+        to: service.incident ? `/incidents/${service.incident.id}` : `/telemetry?tab=traces&service=${encodeURIComponent(service.name)}`,
+      }
+    })
     .sort((a, b) => STATUS_ORDER[a.status] - STATUS_ORDER[b.status] || a.name.localeCompare(b.name))
 }
 
@@ -225,17 +246,17 @@ function HealthWidget({ data }) {
 function ServiceMapWidget({ services }) {
   const shown = services.slice(0, MAX_TILES)
   return (
-    <Widget title="Mapa de serviços" icon="service" className="span-8" action={<WidgetLink to="/deploys">Deploys</WidgetLink>}>
+    <Widget title="Mapa de serviços (OpenTelemetry ao vivo)" icon="service" className="span-8" action={<WidgetLink to="/telemetry">Telemetria</WidgetLink>}>
       <ul className="status-legend" aria-label="Legenda">
         {['good', 'warning', 'critical'].map((status) => (
           <li key={status}>
             <StatusIcon status={status} size={14} />
-            {status === 'good' ? 'Operacional' : status === 'warning' ? 'Incidente SEV3/SEV4' : 'Incidente SEV1/SEV2'}
+            {status === 'good' ? 'Operacional' : status === 'warning' ? 'Degradado / SEV3-4' : 'Incidente SEV1/SEV2'}
           </li>
         ))}
       </ul>
       {shown.length === 0 ? (
-        <p className="empty">Os serviços aparecem aqui assim que um incidente ou deploy citar o nome deles.</p>
+        <p className="empty">Os serviços aparecem aqui assim que enviarem telemetria OTLP ou forem citados em um incidente.</p>
       ) : (
         <div className="service-grid">
           {shown.map((service) => (
@@ -245,13 +266,19 @@ function ServiceMapWidget({ services }) {
                 <strong>{service.name}</strong>
               </span>
               <span className="service-tile-state">
-                {service.worst ? `${service.worst} · ${plural(service.activeCount, 'ativo', 'ativos')}` : 'Operacional'}
+                {service.worst
+                  ? `${service.worst} · ${plural(service.activeCount, 'incidente ativo', 'incidentes ativos')}`
+                  : service.errorSpans > 0
+                    ? `${service.errorSpans} span(s) com erro`
+                    : 'Operacional'}
               </span>
               <span className="service-tile-deploy">
-                <Icon name="deploys" size={13} />
-                {service.lastDeploy
-                  ? `${service.lastDeploy.version} · ${timeAgo(service.lastDeploy.deployedAt)}`
-                  : 'sem deploys registrados'}
+                <Icon name="monitor" size={13} />
+                {service.spans > 0 || service.logs > 0
+                  ? `${service.spans} spans · ${service.logs} logs (1h)`
+                  : service.lastDeploy
+                    ? `${service.lastDeploy.version} · ${timeAgo(service.lastDeploy.deployedAt)}`
+                    : 'aguardando telemetria'}
               </span>
             </Link>
           ))}
@@ -369,9 +396,9 @@ function RoadmapWidget() {
 export default function Console() {
   const { session } = useAuth()
   const [today] = useState(() => new Date())
-  const { data, error, loading, reload } = useAsync(session.role, loadConsole)
+  const { data, error, loading, reload } = useAsync(session.role, loadConsole, 5000)
 
-  const services = data ? buildServices(data.active.content, data.recent.content, data.deploys.content) : []
+  const services = data ? buildServices(data.active.content, data.recent.content, data.deploys.content, data.telemetryServices) : []
   const incidents = data
     ? [...data.active.content, ...data.recent.content.filter((i) => !data.active.content.some((a) => a.id === i.id))]
     : []
