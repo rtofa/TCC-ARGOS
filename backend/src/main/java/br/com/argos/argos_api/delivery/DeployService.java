@@ -52,12 +52,13 @@ public class DeployService {
         }
         String environment = blankToNull(request.environment());
         String commitSha = blankToNull(request.commitSha());
+        Instant committedAt = request.committedAt() == null ? null : request.committedAt().truncatedTo(ChronoUnit.MICROS);
         Deploy deploy = Deploy.record(key.organizationId(), key.keyId(), request.service().trim(),
                 request.version().trim(),
                 environment == null ? DEFAULT_ENVIRONMENT : environment.toLowerCase(Locale.ROOT),
                 commitSha == null ? null : commitSha.toLowerCase(Locale.ROOT),
                 blankToNull(request.author()), validUrl(request.url()), blankToNull(request.description()),
-                deployedAt, now);
+                committedAt, deployedAt, now);
         return DeployResponse.from(repository.save(deploy));
     }
 

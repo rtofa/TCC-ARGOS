@@ -13,20 +13,31 @@ function niceScale(max) {
 }
 
 const plural = (count) => `${count} ${count === 1 ? 'incidente' : 'incidentes'}`
+const pluralDeploys = (count) => `${count} ${count === 1 ? 'deploy' : 'deploys'}`
 
 /**
- * Single-series column chart: incidents opened per day. Every value is also in the table view,
- * so the hover tooltip only enhances.
- * days: [{ key, short, long, count, today }]
+ * Column chart: incidents opened per day with visual diamond markers for deploys on the same day.
+ * days: [{ key, short, long, count, deploys?: [...], today }]
  */
 export default function IncidentsPerDay({ days }) {
   const [hovered, setHovered] = useState(null)
   const { top, ticks } = niceScale(Math.max(0, ...days.map((day) => day.count)))
   const peak = days.reduce((best, day) => (day.count > (best?.count ?? 0) ? day : best), null)
   const total = days.reduce((sum, day) => sum + day.count, 0)
+  const totalDeploys = days.reduce((sum, day) => sum + (day.deploys?.length ?? 0), 0)
 
   return (
     <figure className="chart" aria-label={`Incidentes abertos por dia: ${plural(total)} em ${days.length} dias`}>
+      {totalDeploys > 0 && (
+        <div className="chart-legend-inline" aria-hidden="true">
+          <span>
+            <i className="chart-legend-bar" /> Incidentes abertos
+          </span>
+          <span>
+            <i className="chart-legend-diamond" /> Deploy registrado ({totalDeploys} no período)
+          </span>
+        </div>
+      )}
       <div className="chart-plot">
         <div className="chart-grid" aria-hidden="true">
           {ticks.map((tick) => (
@@ -38,13 +49,14 @@ export default function IncidentsPerDay({ days }) {
         <div className="chart-bars" style={{ gridTemplateColumns: `repeat(${days.length}, 1fr)` }}>
           {days.map((day, i) => {
             const height = (day.count / top) * 100
+            const deployCount = day.deploys?.length ?? 0
             const edge = i < 2 ? 'start' : i > days.length - 3 ? 'end' : 'center'
             return (
               <div key={day.key} className="chart-col">
                 <button
                   type="button"
                   className="chart-hit"
-                  aria-label={`${day.long}: ${plural(day.count)}`}
+                  aria-label={`${day.long}: ${plural(day.count)}${deployCount ? `, ${pluralDeploys(deployCount)}` : ''}`}
                   onPointerEnter={() => setHovered(i)}
                   onPointerLeave={() => setHovered(null)}
                   onFocus={() => setHovered(i)}
@@ -52,15 +64,30 @@ export default function IncidentsPerDay({ days }) {
                 >
                   <span className={`chart-bar ${day.today ? 'chart-bar-today' : ''}`} style={{ height: `${height}%` }} />
                 </button>
-                {day === peak && hovered !== i && (
+                {deployCount > 0 && (
+                  <span
+                    className={`chart-deploy-marker ${day.count > 0 ? 'is-correlated' : ''}`}
+                    style={{ bottom: `calc(${Math.max(height, 6)}% + 6px)` }}
+                    title={`${pluralDeploys(deployCount)}: ${day.deploys.map((d) => `${d.service} ${d.version}`).join(', ')}`}
+                    aria-hidden="true"
+                  >
+                    ◆
+                  </span>
+                )}
+                {day === peak && hovered !== i && deployCount === 0 && (
                   <span className="chart-peak" style={{ bottom: `calc(${height}% + 4px)` }} aria-hidden="true">
                     {day.count}
                   </span>
                 )}
                 {hovered === i && (
-                  <div className={`chart-tooltip chart-tooltip-${edge}`} role="tooltip" style={{ bottom: `calc(${height}% + 8px)` }}>
+                  <div className={`chart-tooltip chart-tooltip-${edge}`} role="tooltip" style={{ bottom: `calc(${height}% + 18px)` }}>
                     <strong>{day.count}</strong>
                     <span>{day.count === 1 ? 'incidente aberto' : 'incidentes abertos'}</span>
+                    {deployCount > 0 && (
+                      <span className="chart-tooltip-deploy">
+                        ◆ {pluralDeploys(deployCount)}: {day.deploys.slice(0, 2).map((d) => `${d.service} ${d.version}`).join(', ')}
+                      </span>
+                    )}
                     <span className="chart-tooltip-date">{day.long}</span>
                   </div>
                 )}
@@ -81,6 +108,7 @@ export default function IncidentsPerDay({ days }) {
             <tr>
               <th>Dia</th>
               <th>Incidentes abertos</th>
+              <th>Deploys</th>
             </tr>
           </thead>
           <tbody>
@@ -88,6 +116,7 @@ export default function IncidentsPerDay({ days }) {
               <tr key={day.key}>
                 <td>{day.long}</td>
                 <td className="numeric">{day.count}</td>
+                <td className="numeric">{day.deploys?.length ?? 0}</td>
               </tr>
             ))}
           </tbody>

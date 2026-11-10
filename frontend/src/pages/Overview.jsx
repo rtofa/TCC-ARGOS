@@ -5,6 +5,7 @@ import { useAsync } from '../hooks/useApi.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge, StatusBadge, ServiceChips } from '../components/Badges.jsx'
 import { DeployList } from '../components/DeployList.jsx'
+import IncidentsPerDay from '../components/IncidentsPerDay.jsx'
 import { SEVERITIES, STATUS_LABEL, formatDuration, timeAgo } from '../format.js'
 
 const PERIODS = [
@@ -14,18 +15,58 @@ const PERIODS = [
 ]
 const PERIOD_HOURS = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
 const ACTIVE = ['OPEN', 'INVESTIGATING', 'MITIGATED']
+const DAY_MS = 86400e3
+const DORA_LEVEL_LABEL = { ELITE: 'Elite', HIGH: 'Alto', MEDIUM: 'Médio', LOW: 'Baixo', 'N/A': 'Sem amostra' }
+
+const dayKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
+
+function buildDailySeries(incidents, deploys, chartDays, now) {
+  const start = new Date(now)
+  start.setHours(0, 0, 0, 0)
+  start.setDate(start.getDate() - (chartDays - 1))
+  const todayKey = dayKey(new Date(now))
+  const days = Array.from({ length: chartDays }, (_, i) => {
+    const date = new Date(start)
+    date.setDate(date.getDate() + i)
+    return {
+      key: dayKey(date),
+      short: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
+      long: date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }),
+      today: dayKey(date) === todayKey,
+      count: 0,
+      deploys: [],
+    }
+  })
+  const byKey = new Map(days.map((d) => [d.key, d]))
+  for (const inc of incidents) {
+    const day = byKey.get(dayKey(new Date(inc.openedAt)))
+    if (day) day.count += 1
+  }
+  for (const dep of deploys) {
+    const day = byKey.get(dayKey(new Date(dep.deployedAt)))
+    if (day) day.deploys.push(dep)
+  }
+  return days
+}
 
 /** Metrics for the period plus what is active right now (a size=1 page per status gives its count). */
 async function loadHome(period) {
-  const openedFrom = new Date(Date.now() - PERIOD_HOURS[period] * 3600e3).toISOString()
-  const [metrics, recent, deploys, ...counts] = await Promise.all([
+  const now = Date.now()
+  const openedFrom = new Date(now - PERIOD_HOURS[period] * 3600e3).toISOString()
+  const chartFrom = new Date(now - 14 * DAY_MS).toISOString()
+  const [metrics, dora, recent, periodIncidents, deploys, ...counts] = await Promise.all([
     api.get(`/incidents/metrics${query({ openedFrom, groupBy: 'severity' })}`),
+    api.get(`/metrics/dora${query({ from: openedFrom })}`).catch(() => null),
     api.get(`/incidents${query({ status: ACTIVE, size: 8 })}`),
-    api.get(`/deploys${query({ size: 5 })}`),
+    api.get(`/incidents${query({ openedFrom: chartFrom, size: 100 })}`),
+    api.get(`/deploys${query({ size: 50 })}`),
     ...ACTIVE.map((status) => api.get(`/incidents${query({ status, size: 1 })}`)),
   ])
   return {
+    now,
     metrics,
+    dora,
+    periodIncidents: periodIncidents.content,
     deploys: deploys.content,
     active: {
       total: recent.totalElements,
@@ -35,12 +76,102 @@ async function loadHome(period) {
   }
 }
 
-function Tile({ label, value, hint, tone }) {
+function Tile({ label, value, hint, tone, badge }) {
   return (
     <section className={`card tile ${tone ? `tile-${tone}` : ''}`}>
-      <h2>{label}</h2>
+      <div className="card-header no-margin">
+        <h2>{label}</h2>
+        {badge}
+      </div>
       <p className="tile-value">{value}</p>
       {hint && <p className="tile-hint">{hint}</p>}
+    </section>
+  )
+}
+
+function DoraBadge({ level }) {
+  if (!level) return null
+  return <span className={`badge dora-badge dora-${level}`}>{DORA_LEVEL_LABEL[level] ?? level}</span>
+}
+
+function DoraSection({ dora }) {
+  if (!dora) return null
+  const { deploymentFrequency: df, leadTimeForChanges: lt, changeFailureRate: cfr, meanTimeToRestore: mttr } = dora
+  return (
+    <section className="card dora-section">
+      <div className="card-header">
+        <div>
+          <h2>Métricas DORA (DevOps Research & Assessment)</h2>
+          <p className="muted small no-margin">
+            Indicadores de velocidade de entrega e estabilidade operacional com correlação automática entre deploys e
+            incidentes (janela de {dora.failureWindowMinutes} min)
+          </p>
+        </div>
+      </div>
+
+      <div className="tiles no-margin">
+        <Tile
+          label="Deployment Frequency"
+          value={`${df.deploysPerDay}/dia`}
+          hint={`${df.totalDeploys} deploy(s) no período · ${df.deploysPerWeek}/sem`}
+          badge={<DoraBadge level={df.level} />}
+        />
+        <Tile
+          label="Lead Time for Changes"
+          value={formatDuration(lt.averageSeconds)}
+          hint={lt.sampleSize > 0 ? `mediana: ${formatDuration(lt.medianSeconds)} (${lt.sampleSize} deploys)` : 'informe committedAt no deploy'}
+          badge={<DoraBadge level={lt.level} />}
+        />
+        <Tile
+          label="Change Failure Rate"
+          value={`${cfr.percentage}%`}
+          tone={cfr.failedDeploys > 0 ? 'alert' : 'ok'}
+          hint={`${cfr.failedDeploys} de ${cfr.totalDeploys} deploy(s) seguidos por incidente`}
+          badge={<DoraBadge level={cfr.level} />}
+        />
+        <Tile
+          label="Mean Time to Restore (MTTR)"
+          value={formatDuration(mttr.mttrSeconds)}
+          hint={`${mttr.resolvedIncidents} resolvido(s) de ${mttr.totalIncidents} · MTTA ${formatDuration(mttr.mttaSeconds)}`}
+          badge={<DoraBadge level={mttr.level} />}
+        />
+      </div>
+
+      {dora.correlatedIncidents?.length > 0 && (
+        <div className="dora-correlations">
+          <h3>Deploys correlacionados com abertura de incidente</h3>
+          <div className="table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Deploy</th>
+                  <th>Autor</th>
+                  <th>Incidente subsequente</th>
+                  <th>Severidade</th>
+                  <th>Intervalo após deploy</th>
+                </tr>
+              </thead>
+              <tbody>
+                {dora.correlatedIncidents.map((c) => (
+                  <tr key={`${c.deployId}-${c.incidentId}`}>
+                    <td>
+                      <Link to={`/deploys?service=${encodeURIComponent(c.service)}`}>
+                        <strong>{c.service}</strong> <code className="mono">{c.version}</code>
+                      </Link>
+                    </td>
+                    <td className="muted">{c.author || 'pipeline'}</td>
+                    <td>
+                      <Link to={`/incidents/${c.incidentId}`}>{c.incidentTitle}</Link>
+                    </td>
+                    <td><SeverityBadge severity={c.severity} /></td>
+                    <td className="text-danger">{c.minutesAfterDeploy} min após deploy</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </section>
   )
 }
@@ -100,7 +231,7 @@ export default function Overview() {
       <header className="page-header">
         <div>
           <h1>Visão geral</h1>
-          <p className="muted">Como está a saúde dos seus serviços agora</p>
+          <p className="muted">Saúde operacional, métricas DORA e correlação de deploys</p>
         </div>
         <div className="segmented" role="group" aria-label="Período">
           {PERIODS.map(([value, label]) => (
@@ -128,6 +259,16 @@ export default function Overview() {
             <Tile label="MTTR" value={formatDuration(data.metrics.overall.mttrSeconds)} hint="tempo médio até resolver" />
           </div>
 
+          <DoraSection dora={data.dora} />
+
+          <section className="card" style={{ marginBottom: 16 }}>
+            <div className="card-header">
+              <h2>Incidentes abertos por dia & Marcadores de Deploy (14 dias)</h2>
+              <Link to="/deploys">Ver deploys</Link>
+            </div>
+            <IncidentsPerDay days={buildDailySeries(data.periodIncidents, data.deploys, 14, data.now)} />
+          </section>
+
           <div className="grid-2">
             <section className="card">
               <h2>Incidentes por severidade</h2>
@@ -139,7 +280,7 @@ export default function Overview() {
             </section>
           </div>
 
-          <section className="card">
+          <section className="card" style={{ marginBottom: 16 }}>
             <div className="card-header">
               <h2>Incidentes ativos recentes</h2>
               <Link to="/incidents">Ver todos</Link>
@@ -182,7 +323,7 @@ export default function Overview() {
                 Nenhum deploy registrado. <Link to="/deploys">Conecte seu pipeline</Link> para saber o que mudou antes de cada incidente.
               </p>
             ) : (
-              <DeployList deploys={data.deploys} />
+              <DeployList deploys={data.deploys.slice(0, 5)} />
             )}
           </section>
         </div>

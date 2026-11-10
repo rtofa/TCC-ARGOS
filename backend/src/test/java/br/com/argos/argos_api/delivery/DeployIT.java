@@ -146,4 +146,58 @@ class DeployIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/deploys").with(asViewerA()).param("from", "ontem"))
                 .andExpect(status().isBadRequest());
     }
+
+    @Test
+    void doraMetricsCalculatesAllFourMetricsAndCorrelatesDeployWithIncident() throws Exception {
+        Instant now = Instant.now().truncatedTo(ChronoUnit.SECONDS);
+        Instant deploy1At = now.minus(30, ChronoUnit.MINUTES);
+        Instant commit1At = deploy1At.minus(20, ChronoUnit.MINUTES); // Lead time = 1200s (20m)
+        Instant deploy2At = now.minus(10, ChronoUnit.MINUTES);
+        Instant commit2At = deploy2At.minus(10, ChronoUnit.MINUTES); // Lead time = 600s (10m)
+
+        // Deploy 1 (checkout-api v1.4.2) -> followed 4 mins later by an incident on checkout-api
+        report(keyA, """
+                {"service":"checkout-api","version":"v1.4.2","environment":"production",
+                 "author":"ci-bot","committedAt":"%s","deployedAt":"%s"}
+                """.formatted(commit1At, deploy1At))
+                .andExpect(status().isCreated());
+
+        // Deploy 2 (checkout-api v1.4.3) -> clean deploy
+        report(keyA, """
+                {"service":"checkout-api","version":"v1.4.3","environment":"production",
+                 "author":"ci-bot","committedAt":"%s","deployedAt":"%s"}
+                """.formatted(commit2At, deploy2At))
+                .andExpect(status().isCreated());
+
+        // Insert an incident opened 4 minutes after deploy 1, resolved 15 minutes later (MTTR = 900s)
+        Instant incOpenedAt = deploy1At.plus(4, ChronoUnit.MINUTES);
+        Instant incAckAt = incOpenedAt.plus(2, ChronoUnit.MINUTES);
+        Instant incResolvedAt = incOpenedAt.plus(15, ChronoUnit.MINUTES);
+        jdbc.update("""
+                INSERT INTO incidents (id, organization_id, title, severity, status, source, affected_services,
+                                       created_by, opened_at, acknowledged_at, resolved_at, updated_at)
+                VALUES (?, ?, 'Falha após deploy', 'SEV1', 'RESOLVED', 'MANUAL', ARRAY['checkout-api'],
+                        ?, ?, ?, ?, ?)
+                """, java.util.UUID.randomUUID(), orgA, adminA,
+                java.sql.Timestamp.from(incOpenedAt), java.sql.Timestamp.from(incAckAt),
+                java.sql.Timestamp.from(incResolvedAt), java.sql.Timestamp.from(incResolvedAt));
+
+        mockMvc.perform(get("/api/metrics/dora").with(asExecutiveA())
+                        .param("service", "checkout-api")
+                        .param("failureWindowMinutes", "15"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.deploymentFrequency.totalDeploys").value(2))
+                .andExpect(jsonPath("$.leadTimeForChanges.averageSeconds").value(900))
+                .andExpect(jsonPath("$.leadTimeForChanges.level").value("ELITE"))
+                .andExpect(jsonPath("$.changeFailureRate.totalDeploys").value(2))
+                .andExpect(jsonPath("$.changeFailureRate.failedDeploys").value(1))
+                .andExpect(jsonPath("$.changeFailureRate.percentage").value(50.0))
+                .andExpect(jsonPath("$.meanTimeToRestore.totalIncidents").value(1))
+                .andExpect(jsonPath("$.meanTimeToRestore.mttrSeconds").value(900))
+                .andExpect(jsonPath("$.meanTimeToRestore.level").value("ELITE"))
+                .andExpect(jsonPath("$.correlatedIncidents", hasSize(1)))
+                .andExpect(jsonPath("$.correlatedIncidents[0].version").value("v1.4.2"))
+                .andExpect(jsonPath("$.correlatedIncidents[0].author").value("ci-bot"))
+                .andExpect(jsonPath("$.correlatedIncidents[0].minutesAfterDeploy").value(4));
+    }
 }

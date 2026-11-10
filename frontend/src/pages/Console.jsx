@@ -62,7 +62,7 @@ async function loadConsole(role) {
 
 // --- derived data (pure) ---------------------------------------------------------------------
 
-function dailyCounts(incidents, chartStart, now) {
+function dailyCounts(incidents, chartStart, now, deploys = []) {
   const todayKey = dayKey(new Date(now))
   const days = Array.from({ length: CHART_DAYS }, (_, i) => {
     const date = new Date(chartStart)
@@ -73,12 +73,17 @@ function dailyCounts(incidents, chartStart, now) {
       long: date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }),
       today: dayKey(date) === todayKey,
       count: 0,
+      deploys: [],
     }
   })
   const byKey = new Map(days.map((day) => [day.key, day]))
   for (const incident of incidents) {
     const day = byKey.get(dayKey(new Date(incident.openedAt)))
     if (day) day.count += 1
+  }
+  for (const deploy of deploys) {
+    const day = byKey.get(dayKey(new Date(deploy.deployedAt)))
+    if (day) day.deploys.push(deploy)
   }
   return days
 }
@@ -485,7 +490,7 @@ export default function Console() {
             className="span-8"
             action={<WidgetLink to="/overview">Visão geral</WidgetLink>}
           >
-            <IncidentsPerDay days={dailyCounts(data.recent.content, data.chartStart, data.now)} />
+            <IncidentsPerDay days={dailyCounts(data.recent.content, data.chartStart, data.now, data.deploys.content)} />
             {data.recent.totalElements > data.recent.content.length && (
               <p className="muted small">Mostrando os {data.recent.content.length} incidentes mais recentes do período.</p>
             )}
