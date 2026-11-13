@@ -1,6 +1,7 @@
 package br.com.argos.argos_api.delivery;
 
 import br.com.argos.argos_api.delivery.dto.DeployPageResponse;
+import br.com.argos.argos_api.delivery.dto.QualityGateResponse;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -15,9 +16,11 @@ import java.util.Set;
 public class DeployController {
 
     private final DeployService deployService;
+    private final QualityGateService qualityGateService;
 
-    public DeployController(DeployService deployService) {
+    public DeployController(DeployService deployService, QualityGateService qualityGateService) {
         this.deployService = deployService;
+        this.qualityGateService = qualityGateService;
     }
 
     @GetMapping
@@ -30,5 +33,11 @@ public class DeployController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return deployService.list(service, environment, from, to, page, size);
+    }
+
+    @GetMapping("/quality-gate")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER', 'EXECUTIVE')")
+    public QualityGateResponse qualityGate(@RequestParam(required = false) String service) {
+        return qualityGateService.evaluateForCurrentUser(service);
     }
 }

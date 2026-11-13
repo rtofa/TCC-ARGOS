@@ -1,0 +1,7 @@
+signal,concurrent_tenants,total_batches,items_per_batch,total_items,elapsed_ms,items_per_sec,requests_per_sec,p50_ms,p95_ms,p99_ms,mean_ms,stddev_ms
+"SPANS (/api/webhooks/otlp/v1/traces)",1,20,25,500,539.93,926.04,37.04,21.27,31.03,106.21,26.29,22.76
+"LOGS (/api/webhooks/otlp/v1/logs)",1,20,25,500,283.18,1765.63,70.63,13.32,18.98,24.45,13.93,3.18
+"SPANS (/api/webhooks/otlp/v1/traces)",4,80,25,2000,469.25,4262.16,170.49,20.97,28.73,46.71,22.38,5.57
+"LOGS (/api/webhooks/otlp/v1/logs)",4,80,25,2000,307.33,6507.76,260.31,14.64,17.95,19.79,15.07,1.77
+"SPANS (/api/webhooks/otlp/v1/traces)",8,160,25,4000,1063.37,3761.64,150.47,47.49,105.07,125.01,51.71,23.90
+"LOGS (/api/webhooks/otlp/v1/logs)",8,160,25,4000,1411.55,2833.77,113.35,48.30,177.29,199.26,68.96,49.55

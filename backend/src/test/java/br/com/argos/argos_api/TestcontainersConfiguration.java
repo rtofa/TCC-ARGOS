@@ -11,6 +11,7 @@ public class TestcontainersConfiguration {
     @Bean
     @ServiceConnection
     PostgreSQLContainer postgresContainer() {
-        return new PostgreSQLContainer("postgres:15");
+        return new PostgreSQLContainer("postgres:15")
+                .withSharedMemorySize(512L * 1024L * 1024L);
     }
 }

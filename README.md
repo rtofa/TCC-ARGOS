@@ -77,6 +77,8 @@ Veja mais detalhes em [`demo/README.md`](demo/README.md).
 
 ## Arquitetura e pilha tecnológica
 
+> 📖 **Documentação Técnica Completa**: Para um guia detalhado sobre o funcionamento interno, diagramas de fluxo, explicação de cada ferramenta (OpenTelemetry, Spring Modulith, PostgreSQL RLS, Quality Gate, DORA, RED) e mapeamento de telas, consulte [`docs/ARQUITETURA_E_MANUAL_DO_SISTEMA.md`](docs/ARQUITETURA_E_MANUAL_DO_SISTEMA.md).
+
 - **Backend (`backend/`)**: Java 17, Spring Boot 4.1.1, Spring Modulith 2.1.1, Spring Data JPA + JDBC em lote, Flyway, Spring Security (OAuth2 Resource Server com JWT para usuários e filtro `X-API-Key` para ingestão em `/api/webhooks/**`).
   - Módulos verificados por `ModularityTests`:
     - `identity`: organizações, usuários, autenticação JWT e papéis (`ADMIN`, `EDITOR`, `VIEWER`, `EXECUTIVE`).

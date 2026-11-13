@@ -18,5 +18,11 @@ public record RecordDeployRequest(
         @Size(max = 200) String author,
         @Size(max = 500) String url,
         @Size(max = 2000) String description,
-        Instant deployedAt) {
+        Instant deployedAt,
+        Instant committedAt) {
+
+    public RecordDeployRequest(String service, String version, String environment, String commitSha,
+                               String author, String url, String description, Instant deployedAt) {
+        this(service, version, environment, commitSha, author, url, description, deployedAt, null);
+    }
 }

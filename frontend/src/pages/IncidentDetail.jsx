@@ -11,6 +11,25 @@ import { SEVERITIES, SEVERITY_LABEL, STATUSES, STATUS_LABEL, formatDateTime, for
 
 /** Deploys up to this long before the incident opened are shown as possible causes. */
 const DEPLOY_LOOKBACK_HOURS = 24
+const SUSPECT_DEPLOY_MAX_MINUTES = 120
+
+function findSuspectDeploy(openedAt, deploysList = []) {
+  const openedMs = Date.parse(openedAt)
+  let best = null
+  let bestDiffMin = Infinity
+  for (const d of deploysList) {
+    const diffSec = (openedMs - Date.parse(d.deployedAt)) / 1000
+    // Deploys up to SUSPECT_DEPLOY_MAX_MINUTES before opening (or up to 2 min after due to pipeline reporting lag)
+    if (diffSec >= -120 && diffSec <= SUSPECT_DEPLOY_MAX_MINUTES * 60) {
+      const mins = Math.max(1, Math.round(Math.max(0, diffSec) / 60))
+      if (mins < bestDiffMin) {
+        bestDiffMin = mins
+        best = { deploy: d, minutes: mins }
+      }
+    }
+  }
+  return best
+}
 
 function incidentDeploysPath(incident) {
   if (!incident || incident.affectedServices.length === 0) return null
@@ -194,6 +213,25 @@ export default function IncidentDetail() {
       </header>
 
       {actionError && <p className="form-error" role="alert">{actionError}</p>}
+
+      {(() => {
+        const suspect = findSuspectDeploy(data.openedAt, deploys.data?.content)
+        if (!suspect) return null
+        const { deploy: d, minutes } = suspect
+        return (
+          <div className="banner banner-alert suspect-deploy-banner" role="status">
+            <span>
+              <strong>
+                Deploy suspeito detectado {minutes} min antes da abertura deste incidente ({d.version}
+                {d.author ? ` por ${d.author}` : ''})
+              </strong>
+              {' · '}serviço <code className="mono">{d.service}</code>
+              {d.commitSha ? ` (${d.commitSha.slice(0, 7)})` : ''}
+            </span>
+            <Link to={`/deploys?service=${encodeURIComponent(d.service)}`}>Inspecionar deploy →</Link>
+          </div>
+        )
+      })()}
 
       <div className="detail-grid">
         <div>

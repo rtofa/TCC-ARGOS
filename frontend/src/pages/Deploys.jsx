@@ -12,7 +12,12 @@ const PAGE_SIZE = 20
 
 const currentMinute = () => Math.floor(Date.now() / 60000) * 60000
 
-const githubActionsStep = () => `- name: Registrar deploy no Argos
+const githubActionsStep = () => `- name: Quality Gate no Argos (bloqueia se houver SEV1/alerta crítico)
+  run: |
+    curl -sf "\${{ vars.ARGOS_API_URL }}/webhooks/deploys/quality-gate?service=checkout-api&strict=true" \\
+      -H "X-API-Key: \${{ secrets.ARGOS_API_KEY }}"
+
+- name: Registrar deploy no Argos
   if: success()
   run: |
     curl -sf -X POST "\${{ vars.ARGOS_API_URL }}/webhooks/deploys" \\
@@ -27,10 +32,67 @@ const githubActionsStep = () => `- name: Registrar deploy no Argos
         "url": "\${{ github.server_url }}/\${{ github.repository }}/actions/runs/\${{ github.run_id }}"
       }'`
 
-const curlExample = () => `curl -X POST ${publicApiUrl()}/webhooks/deploys \\
+const curlExample = () => `# 1. Quality Gate antes do deploy (retorna HTTP 409 se bloqueado)
+curl -f "${publicApiUrl()}/webhooks/deploys/quality-gate?service=checkout-api&strict=true" \\
+  -H "X-API-Key: <sua-chave>"
+
+# 2. Notificar deploy concluído
+curl -X POST ${publicApiUrl()}/webhooks/deploys \\
   -H "X-API-Key: <sua-chave>" \\
   -H "Content-Type: application/json" \\
   -d '{"service":"checkout-api","version":"2.3.0","environment":"production"}'`
+
+function QualityGateBanner({ gate }) {
+  if (!gate) return null
+  const blocked = !gate.allowed
+  return (
+    <section
+      className="card"
+      aria-label="Quality Gate de Deploy"
+      style={{
+        borderLeft: `4px solid ${blocked ? '#dc2626' : '#16a34a'}`,
+        background: blocked ? 'rgba(220, 38, 38, 0.06)' : 'rgba(22, 163, 74, 0.06)',
+      }}
+    >
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+            <span
+              className="badge"
+              style={{
+                background: blocked ? '#dc2626' : '#16a34a',
+                color: '#fff',
+                fontWeight: 700,
+              }}
+            >
+              QUALITY GATE: {blocked ? 'BLOQUEADO' : 'LIBERADO'}
+            </span>
+            {gate.service && <span className="chip">{gate.service}</span>}
+          </div>
+          <p className="small" style={{ marginTop: 6, marginBottom: 0 }}>
+            {gate.reason}
+          </p>
+        </div>
+        <div style={{ display: 'flex', gap: 16, fontSize: 13 }}>
+          <span><strong>{gate.openSev1Incidents}</strong> SEV1 aberto(s)</span>
+          <span><strong>{gate.openCriticalAlerts}</strong> alerta(s) crítico(s)</span>
+        </div>
+      </div>
+      {blocked && gate.blockingIncidents?.length > 0 && (
+        <ul className="plain-list" style={{ marginTop: 10, display: 'grid', gap: 6 }}>
+          {gate.blockingIncidents.map((inc) => (
+            <li key={inc.id} style={{ fontSize: 13 }}>
+              <Link to={`/incidents/${inc.id}`}>
+                <strong>[{inc.severity}] {inc.title}</strong>
+              </Link>{' '}
+              <span className="muted">({inc.status} · {inc.source})</span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
 
 function Instructions() {
   return (
@@ -72,6 +134,7 @@ export default function Deploys() {
 
   const from = PERIOD_HOURS[period] ? new Date(now - PERIOD_HOURS[period] * 3600e3).toISOString() : undefined
   const deploys = useApi(`/deploys${query({ service, environment, from, page, size: PAGE_SIZE })}`)
+  const qualityGate = useApi(`/deploys/quality-gate${query({ service })}`)
   const filtered = service || environment || period
   const data = deploys.data
 
@@ -83,6 +146,8 @@ export default function Deploys() {
           <p className="muted">O que mudou, onde e quando: a primeira pergunta durante um incidente</p>
         </div>
       </header>
+
+      <QualityGateBanner gate={qualityGate.data} />
 
       <section className="card filters" aria-label="Filtros">
         <form

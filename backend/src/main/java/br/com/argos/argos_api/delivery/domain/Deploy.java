@@ -55,6 +55,9 @@ public class Deploy implements Persistable<UUID> {
     @Column(updatable = false, length = 2000)
     private String description;
 
+    @Column(name = "committed_at", updatable = false)
+    private Instant committedAt;
+
     @Column(name = "deployed_at", nullable = false, updatable = false)
     private Instant deployedAt;
 
@@ -68,6 +71,13 @@ public class Deploy implements Persistable<UUID> {
     public static Deploy record(UUID organizationId, UUID apiKeyId, String service, String version,
                                 String environment, String commitSha, String author, String url,
                                 String description, Instant deployedAt, Instant receivedAt) {
+        return record(organizationId, apiKeyId, service, version, environment, commitSha, author, url,
+                description, null, deployedAt, receivedAt);
+    }
+
+    public static Deploy record(UUID organizationId, UUID apiKeyId, String service, String version,
+                                String environment, String commitSha, String author, String url,
+                                String description, Instant committedAt, Instant deployedAt, Instant receivedAt) {
         Deploy deploy = new Deploy();
         deploy.id = UUID.randomUUID();
         deploy.organizationId = organizationId;
@@ -79,6 +89,7 @@ public class Deploy implements Persistable<UUID> {
         deploy.author = author;
         deploy.url = url;
         deploy.description = description;
+        deploy.committedAt = committedAt;
         deploy.deployedAt = deployedAt;
         deploy.receivedAt = receivedAt;
         return deploy;

@@ -122,4 +122,47 @@ class OtlpIngestIT extends AbstractIntegrationTest {
                         .contentType("application/x-protobuf").content(new byte[]{1, 2, 3}))
                 .andExpect(status().isUnsupportedMediaType());
     }
+
+    @Test
+    void automaticallyOpensIncidentWhenServiceHasHighSpanErrorRate() throws Exception {
+        send("traces", keyA, OtlpPayloads.traces("payment",
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c11", null, "POST /charge", now.minusSeconds(10), 90, true),
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c12", null, "POST /charge", now.minusSeconds(5), 85, true),
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c13", null, "POST /charge", now, 110, true)))
+                .andExpect(status().isOk());
+
+        assertThat(count("incidents", orgA)).isEqualTo(1);
+        assertThat(count("incidents", orgB)).isZero();
+    }
+
+    @Test
+    void automaticallyOpensIncidentWhenP95LatencyExceedsConfiguredSloRule() throws Exception {
+        mockMvc.perform(post("/api/telemetry/rules").with(asAdminA())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "service": "checkout",
+                                  "windowSeconds": 90,
+                                  "maxErrorRatePercent": 5.0,
+                                  "maxP95LatencyMs": 500.0,
+                                  "minRequests": 3,
+                                  "severity": "SEV2",
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.service").value("checkout"))
+                .andExpect(jsonPath("$.maxP95LatencyMs").value(500.0));
+
+        // 3 healthy spans (error = false) but slow (900ms > 500ms limit)
+        send("traces", keyA, OtlpPayloads.traces("checkout",
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c21", null, "POST /checkout", now.minusSeconds(10), 920, false),
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c22", null, "POST /checkout", now.minusSeconds(5), 880, false),
+                OtlpPayloads.span(TRACE_ID, "051581bf3cb55c23", null, "POST /checkout", now, 950, false)))
+                .andExpect(status().isOk());
+
+        assertThat(count("incidents", orgA)).isEqualTo(1);
+        String title = jdbc.queryForObject("SELECT title FROM incidents WHERE organization_id = ?", String.class, orgA);
+        assertThat(title).contains("Degradação de latência p95 em checkout");
+    }
 }

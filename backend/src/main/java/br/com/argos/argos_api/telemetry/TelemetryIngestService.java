@@ -7,17 +7,21 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 @Service
 class TelemetryIngestService {
 
     private final OtlpParser parser;
     private final TelemetryStore store;
+    private final TelemetryMonitor monitor;
     private final Clock clock;
 
-    TelemetryIngestService(OtlpParser parser, TelemetryStore store, Clock clock) {
+    TelemetryIngestService(OtlpParser parser, TelemetryStore store, TelemetryMonitor monitor, Clock clock) {
         this.parser = parser;
         this.store = store;
+        this.monitor = monitor;
         this.clock = clock;
     }
 
@@ -26,6 +30,12 @@ class TelemetryIngestService {
     Map<String, Object> ingestTraces(ApiKeyPrincipal key, String body) {
         Batch<ParsedTelemetry.Span> batch = parser.parseTraces(body);
         store.saveSpans(key.organizationId(), batch.accepted(), clock.instant());
+        Set<String> services = batch.accepted().stream()
+                .map(ParsedTelemetry.Span::service)
+                .collect(Collectors.toSet());
+        if (!services.isEmpty()) {
+            monitor.evaluate(key, services);
+        }
         return partialSuccess("rejectedSpans", batch.rejected());
     }
 

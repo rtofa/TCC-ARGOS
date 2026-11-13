@@ -171,4 +171,64 @@ class TelemetryQueryIT extends AbstractIntegrationTest {
                 .andExpect(status().isBadRequest());
         mockMvc.perform(get("/api/telemetry/services")).andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void topologyBuildsCallGraphAndIdentifiesRootCauseOfCascadingErrors() throws Exception {
+        mockMvc.perform(get("/api/telemetry/topology").with(asViewerA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.nodes", hasSize(2)))
+                .andExpect(jsonPath("$.edges", hasSize(1)))
+                .andExpect(jsonPath("$.edges[0].source").value("frontend"))
+                .andExpect(jsonPath("$.edges[0].target").value("cartservice"))
+                .andExpect(jsonPath("$.edges[0].calls").value(1))
+                .andExpect(jsonPath("$.edges[0].errors").value(1))
+                .andExpect(jsonPath("$.edges[0].avgDurationMs").value(800.0))
+                // cartservice is the downstream root cause; frontend only suffers cascading failure
+                .andExpect(jsonPath("$.nodes[?(@.service=='cartservice')].rootCause").value(contains(true)))
+                .andExpect(jsonPath("$.nodes[?(@.service=='frontend')].rootCause").value(contains(false)));
+    }
+
+    @Test
+    void redMetricsReturnRateErrorsAndLatencyPercentiles() throws Exception {
+        mockMvc.perform(get("/api/telemetry/red").param("service", "frontend").with(asViewerA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.service").value("frontend"))
+                .andExpect(jsonPath("$.totalRequests").value(2))
+                .andExpect(jsonPath("$.totalErrors").value(1))
+                .andExpect(jsonPath("$.errorRatePercent").value(50.0))
+                .andExpect(jsonPath("$.p95DurationMs").isNumber())
+                .andExpect(jsonPath("$.buckets").isArray());
+    }
+
+    @Test
+    void monitorRulesCanBeCreatedListedUpdatedAndDeletedPerOrganization() throws Exception {
+        String created = mockMvc.perform(post("/api/telemetry/rules").with(asEditorA())
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {
+                                  "service": "cartservice",
+                                  "windowSeconds": 120,
+                                  "maxErrorRatePercent": 2.5,
+                                  "maxP95LatencyMs": 750.0,
+                                  "minRequests": 5,
+                                  "severity": "SEV1",
+                                  "enabled": true
+                                }
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.service").value("cartservice"))
+                .andExpect(jsonPath("$.severity").value("SEV1"))
+                .andReturn().getResponse().getContentAsString();
+        String id = JsonPath.read(created, "$.id");
+
+        mockMvc.perform(get("/api/telemetry/rules").with(asViewerA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(1)))
+                .andExpect(jsonPath("$[0].id").value(id));
+
+        // Organization B never sees Organization A's rules
+        mockMvc.perform(get("/api/telemetry/rules").with(asAdminB()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(0)));
+    }
 }

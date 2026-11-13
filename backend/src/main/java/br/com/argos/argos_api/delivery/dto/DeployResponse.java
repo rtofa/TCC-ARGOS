@@ -14,12 +14,13 @@ public record DeployResponse(
         String author,
         String url,
         String description,
+        Instant committedAt,
         Instant deployedAt,
         Instant receivedAt) {
 
     public static DeployResponse from(Deploy deploy) {
         return new DeployResponse(deploy.getId(), deploy.getService(), deploy.getVersion(), deploy.getEnvironment(),
                 deploy.getCommitSha(), deploy.getAuthor(), deploy.getUrl(), deploy.getDescription(),
-                deploy.getDeployedAt(), deploy.getReceivedAt());
+                deploy.getCommittedAt(), deploy.getDeployedAt(), deploy.getReceivedAt());
     }
 }

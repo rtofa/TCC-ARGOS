@@ -435,3 +435,56 @@ code.mono { padding: 1px 5px; background: #f1f2f7; border-radius: 4px; }
 .log-warn .log-level { background: #fff3d6; color: #8a5a00; }
 .trace-list { list-style: none; margin: 0 0 8px; padding: 0; }
 .trace-list li { padding: 6px 0; border-bottom: 1px solid #eef0f6; }
+
+/* --- Topologia de microsserviços & Métricas RED ------------------------------------------- */
+.segmented-sm button { padding: 3px 10px; font-size: 12px; }
+.topology-wrap { display: flex; flex-direction: column; gap: 10px; }
+.topology-toolbar { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; }
+.topology-scroll { overflow-x: auto; padding: 6px 2px; background: #f8fafd; border: 1px solid var(--border); border-radius: 8px; }
+.topology-svg { display: block; margin: 0 auto; }
+.topology-edge-label { font-size: 10.5px; font-weight: 600; fill: #354a6b; font-variant-numeric: tabular-nums; }
+.topology-edge-label.is-err { fill: #a02828; }
+.topology-node-box { fill: #fff; stroke: var(--border); stroke-width: 1.4; transition: filter 0.12s; }
+.topology-node:hover .topology-node-box { filter: drop-shadow(0 4px 10px rgba(10, 31, 61, 0.14)); }
+.topology-node-good .topology-node-box { fill: #f5fbf8; stroke: #b8e2ca; }
+.topology-node-good .topology-node-bar { fill: var(--ok); }
+.topology-node-warning .topology-node-box { fill: #fdf9ee; stroke: #f0d799; }
+.topology-node-warning .topology-node-bar { fill: var(--warning); }
+.topology-node-critical .topology-node-box { fill: #fdeaea; stroke: #e69c9c; stroke-width: 2; }
+.topology-node-critical .topology-node-bar { fill: var(--alert); }
+.topology-node-title { font-size: 13px; font-weight: 700; fill: var(--text); }
+.topology-node-state { font-size: 11px; font-weight: 600; }
+.topology-state-good { fill: #136a39; }
+.topology-state-warning { fill: #946200; }
+.topology-state-critical { fill: #a02828; }
+.topology-node-meta { font-size: 11px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+
+.red-dashboard { display: flex; flex-direction: column; gap: 16px; }
+.red-card { display: flex; flex-direction: column; gap: 8px; }
+.red-svg { width: 100%; height: auto; display: block; }
+.red-axis-text { font-size: 10.5px; fill: var(--muted); font-variant-numeric: tabular-nums; }
+.red-series-legend { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.red-series-tag { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text); }
+.red-series-tag i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+.red-markers-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 10px 16px; }
+.slo-rule-form { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; padding: 14px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; }
+
+/* --- Métricas DORA & Correlação Visual de Deploys ---------------------------------------- */
+.dora-section { margin-bottom: 16px; display: flex; flex-direction: column; gap: 14px; }
+.dora-badge { font-size: 11px; padding: 2px 7px; border-radius: 10px; }
+.dora-ELITE { background: var(--ok-soft); color: #136a39; }
+.dora-HIGH { background: var(--primary-soft); color: var(--primary-dark); }
+.dora-MEDIUM { background: #fdf0e1; color: #b35c0b; }
+.dora-LOW { background: var(--alert-soft); color: #a02828; }
+.dora-correlations { padding-top: 8px; border-top: 1px solid var(--border); }
+
+.chart-legend-inline { display: flex; gap: 18px; flex-wrap: wrap; font-size: 12px; color: var(--muted); margin-bottom: 4px; }
+.chart-legend-inline span { display: inline-flex; align-items: center; gap: 6px; }
+.chart-legend-bar { width: 10px; height: 10px; border-radius: 2px; background: var(--chart); display: inline-block; }
+.chart-legend-diamond { width: 8px; height: 8px; background: var(--primary); transform: rotate(45deg); display: inline-block; }
+.chart-deploy-marker { position: absolute; left: 50%; transform: translateX(-50%); font-size: 11px; line-height: 1; color: var(--primary); pointer-events: none; }
+.chart-deploy-marker.is-correlated { color: var(--alert); font-size: 13px; }
+.chart-tooltip-deploy { color: var(--primary-dark); font-weight: 600; margin-top: 2px; }
+
+.suspect-deploy-banner { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; border-left: 4px solid var(--alert); }
+.suspect-deploy-banner a { font-weight: 600; color: #a02828; white-space: nowrap; }

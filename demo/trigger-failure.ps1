@@ -1,6 +1,8 @@
-# Injeta (ou remove) uma falha na aplicacao de demo via API do flagd-ui, registra um deploy suspeito e avisa o Argos.
-#   .\demo\trigger-failure.ps1                                  liga cartFailure (100%) e abre o incidente
-#   .\demo\trigger-failure.ps1 -Flag productCatalogFailure      escolhe outra falha
+# Ativa (ou desativa) uma feature flag de falha na OpenTelemetry Demo via API do flagd-ui.
+# Nenhum alerta ou deploy falso e enviado: o proprio Argos detecta os erros reais nos spans OTLP recebidos
+# (TelemetryMonitor) e abre/resolve o incidente automaticamente.
+#   .\demo\trigger-failure.ps1                                  liga cartFailure (100%)
+#   .\demo\trigger-failure.ps1 -Flag productCatalogFailure      liga productCatalogFailure
 #   .\demo\trigger-failure.ps1 -Flag productCatalogFailure -Reset
 param(
     [ValidateSet('cartFailure', 'productCatalogFailure', 'paymentFailure', 'adFailure')]
@@ -9,21 +11,20 @@ param(
 )
 $ErrorActionPreference = 'Stop'
 
-$Scenarios = @{
-    cartFailure           = @{ On = '100%'; Service = 'cart';            Title = 'Taxa de erro alta no servico de carrinho (cart)' }
-    productCatalogFailure = @{ On = 'on';   Service = 'product-catalog'; Title = 'Falhas ao consultar o catalogo de produtos (product-catalog)' }
-    paymentFailure        = @{ On = '100%'; Service = 'payment';         Title = 'Pagamentos falhando no servico payment' }
-    adFailure             = @{ On = 'on';   Service = 'ad';              Title = 'Falhas ao carregar anuncios no servico ad' }
+$Variants = @{
+    cartFailure           = '100%'
+    productCatalogFailure = 'on'
+    paymentFailure        = '100%'
+    adFailure             = 'on'
 }
-$scenario = $Scenarios[$Flag]
-$variant = if ($Reset) { 'off' } else { $scenario.On }
+$Services = @{
+    cartFailure           = 'cart'
+    productCatalogFailure = 'product-catalog'
+    paymentFailure        = 'payment'
+    adFailure             = 'ad'
+}
+$variant = if ($Reset) { 'off' } else { $Variants[$Flag] }
 
-$EnvFile = Join-Path $PSScriptRoot 'generated\argos.env'
-if (-not (Test-Path $EnvFile)) { throw "Arquivo $EnvFile nao encontrado. Suba o Argos primeiro." }
-$vars = @{}
-Get-Content $EnvFile | ForEach-Object { if ($_ -match '^([A-Z_]+)=(.*)$') { $vars[$Matches[1]] = $Matches[2].Trim() } }
-
-# Atualiza a feature flag pelo flagd-ui (atomico, recarrega o flagd sem reiniciar container).
 $state = Invoke-RestMethod -Uri 'http://localhost:8080/feature/api/read'
 $flagObj = $state.flags.$Flag
 $flagObj.defaultVariant = $variant
@@ -33,35 +34,29 @@ if ($flagObj.PSObject.Properties['targeting'] -and $flagObj.targeting.if) {
 $writeBody = @{ data = @{ '$schema' = 'https://flagd.dev/schema/v0/flags.json'; flags = $state.flags } } | ConvertTo-Json -Depth 20
 Invoke-RestMethod -Method Post -Uri 'http://localhost:8080/feature/api/write' -ContentType 'application/json' -Body $writeBody | Out-Null
 
-# Na abertura da falha, registra tambem um deploy recente do servico afetado para demonstrar a correlacao deploy <-> incidente.
-if (-not $Reset) {
-    $deployedAt = [DateTimeOffset]::UtcNow.AddMinutes(-5).ToString('yyyy-MM-ddTHH:mm:ssZ')
-    $deploy = @{
-        service     = $scenario.Service
-        version     = "3.1.0-$Flag"
-        environment = 'production'
-        commitSha   = '4c44a889f0e1d2c3'
-        author      = 'ci-bot'
-        url         = 'https://github.com/rtofa/TCC-ARGOS/actions'
-        description = "Ativa alteracao associada ao cenario $Flag"
-        deployedAt  = $deployedAt
-    } | ConvertTo-Json
-    Invoke-RestMethod -Method Post -Uri "$($vars['ARGOS_URL'])/api/webhooks/deploys" `
-        -Headers @{ 'X-API-Key' = $vars['ARGOS_API_KEY'] } -ContentType 'application/json' -Body $deploy | Out-Null
+if (-not $Reset -and (Test-Path "$PSScriptRoot\generated\argos.env")) {
+    $envLines = Get-Content "$PSScriptRoot\generated\argos.env"
+    $apiKey = ($envLines | Where-Object { $_ -like 'ARGOS_API_KEY=*' }) -replace '^ARGOS_API_KEY=', ''
+    if ($apiKey) {
+        $nowUtc = (Get-Date).ToUniversalTime()
+        $deployBody = @{
+            service     = $Services[$Flag]
+            version     = 'v1.4.2'
+            environment = 'production'
+            commitSha   = 'a8f4c21e9b0d'
+            author      = 'ci-bot'
+            description = "Release automatica antes de $Flag"
+            committedAt = $nowUtc.AddMinutes(-12).ToString('o')
+            deployedAt  = $nowUtc.ToString('o')
+        } | ConvertTo-Json
+        try {
+            Invoke-RestMethod -Method Post -Uri 'http://localhost:8081/api/webhooks/deploys' `
+                -Headers @{ 'X-API-Key' = $apiKey } -ContentType 'application/json' -Body $deployBody | Out-Null
+            Write-Host ("Deploy v1.4.2 registrado no servico '{0}' para correlacao DORA." -f $Services[$Flag])
+        } catch {}
+    }
 }
 
-$alert = @{
-    title       = $scenario.Title
-    dedupKey    = "demo-$Flag"
-    status      = if ($Reset) { 'resolved' } else { 'firing' }
-    severity    = 'critical'
-    service     = $scenario.Service
-    description = "Falha controlada na feature flag '$Flag' (variante '$variant') na OpenTelemetry Demo."
-} | ConvertTo-Json
-$result = Invoke-RestMethod -Method Post -Uri "$($vars['ARGOS_URL'])/api/webhooks/alerts" `
-    -Headers @{ 'X-API-Key' = $vars['ARGOS_API_KEY'] } -ContentType 'application/json' -Body $alert
-
-$actions = ($result.results | ForEach-Object { $_.action }) -join ', '
-Write-Host ("Flag {0}: {1}" -f $Flag, $variant)
-Write-Host "Argos: alerta enviado -> $actions"
-Write-Host 'Abra Incidentes no console do Argos: http://localhost:3030/incidents'
+Write-Host ("Feature flag '{0}' na OpenTelemetry Demo -> '{1}'" -f $Flag, $variant)
+Write-Host 'O Argos monitora o fluxo OTLP em tempo real e abrira/resolvera o incidente automaticamente em alguns segundos.'
+Write-Host 'Acompanhe ao vivo em: http://localhost:3030'
