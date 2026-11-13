@@ -15,7 +15,7 @@
    - [3.4 Spring Security (Autenticação Dual: JWT + X-API-Key)](#34-spring-security-autenticação-dual-jwt--x-api-key)
    - [3.5 React 19, Vite 8 e Nginx (Reverse Proxy)](#35-react-19-vite-8-e-nginx-reverse-proxy)
    - [3.6 Docker, Docker Compose e Testcontainers](#36-docker-docker-compose-e-testcontainers)
-   - [3.7 OpenTelemetry Demo (Astronomy Shop) e `flagd`](#37-opentelemetry-demo-astronomy-shop-e-flagd)
+   - [3.7 OpenTelemetry Demo (Astronomy Shop), `load-generator` e `flagd`](#37-opentelemetry-demo-astronomy-shop-load-generator-e-flagd)
    - [3.8 GitHub Actions, Dependabot, Trivy e Quality Gate](#38-github-actions-dependabot-trivy-e-quality-gate)
 4. [Arquitetura Interna do Backend (Módulos Spring Modulith)](#4-arquitetura-interna-do-backend-módulos-spring-modulith)
 5. [Isolamento Multi-Tenant Ponta a Ponta](#5-isolamento-multi-tenant-ponta-a-ponta)
@@ -24,6 +24,7 @@
    - [6.2 Fluxo de Monitoramento Automático e Abertura de Incidente (SLO/Alerts)](#62-fluxo-de-monitoramento-automático-e-abertura-de-incidente-sloalerts)
    - [6.3 Fluxo de Correlação de Causa-Raiz (Topologia + RED + Waterfall + DORA)](#63-fluxo-de-correlação-de-causa-raiz-topologia--red--waterfall--dora)
    - [6.4 Fluxo de CI/CD, Quality Gate e Registro de Deploy](#64-fluxo-de-cicd-quality-gate-e-registro-de-deploy)
+   - [6.5 Fluxo de Simulação de Microsserviços e Injeção de Falhas (`demo/`)](#65-fluxo-de-simulação-de-microsserviços-e-injeção-de-falhas-demo)
 7. [Estrutura do Frontend e Mapeamento de Telas](#7-estrutura-do-frontend-e-mapeamento-de-telas)
 8. [Infraestrutura, Portas e Como Subir o Ambiente](#8-infraestrutura-portas-e-como-subir-o-ambiente)
 9. [Testes Automatizados e Suíte Experimental (Benchmarks)](#9-testes-automatizados-e-suíte-experimental-benchmarks)
@@ -136,11 +137,12 @@ flowchart LR
   - **Docker & Docker Compose**: Empacotam PostgreSQL, Backend, Frontend e o script de *seed* inicial em containers isolados e reproduzíveis com um único comando (`docker compose up --build -d`).
   - **Testcontainers**: Biblioteca Java que sobe um container real do **PostgreSQL 15** automaticamente durante os testes de integração (`*IT`) e benchmarks, garantindo que os testes rodem exatamente contra o mesmo motor de banco e políticas RLS da produção (sem usar bancos em memória como H2).
 
-### 3.7 OpenTelemetry Demo (Astronomy Shop) e `flagd`
+### 3.7 OpenTelemetry Demo (Astronomy Shop), `load-generator` e `flagd`
 * **O que são**:
-  - **OpenTelemetry Demo**: Aplicação oficial de referência da comunidade OpenTelemetry — um e-commerce real composto por ~15 microsserviços em diversas linguagens (Go, Java, Python, Node.js, .NET, Rust, C++), incluindo `frontend`, `checkout`, `payment`, `cart`, `product-catalog`, `recommendation`, etc., além de um gerador de carga (`load-generator`).
-  - **`flagd`**: Motor de *feature flags* da Demo que permite injetar falhas controladas em tempo real (como `productCatalogFailure`, `cartFailure` e `paymentFailure`) sem reiniciar containers.
-* **Como funcionam com o Argos**: Os scripts `demo/start-demo.ps1` e `demo/start-demo.sh` configuram o OpenTelemetry Collector da loja para enviar toda a telemetria gerada diretamente para o Argos, permitindo demonstrar cenários reais de produção.
+  - **OpenTelemetry Demo (`Astronomy Shop` v3.1.0)**: Aplicação oficial de referência da comunidade OpenTelemetry — um e-commerce real composto por ~15 microsserviços poliglotas (Go, Java, Python, Node.js, .NET, Rust, C++), incluindo `frontend-proxy`, `frontend`, `checkout`, `payment`, `cart`, `product-catalog`, `recommendation`, `ad`, `shipping`, `currency` e `email`.
+  - **`load-generator` (Locust)**: Serviço que simula continuamente usuários reais navegando na loja, adicionando produtos ao carrinho e finalizando pedidos (`http://localhost:8080/loadgen/`).
+  - **`flagd` / `flagd-ui`**: Motor de *feature flags* integrado à Demo (`http://localhost:8080/feature`) que permite ativar ou desativar falhas reais dentro dos microsserviços em tempo real, sem reiniciar containers.
+* **Como funcionam com o Argos**: Em vez de usar mocks artificiais, o Argos conecta-se diretamente ao OpenTelemetry Collector da loja via `demo/start-demo.{ps1,sh}`, recebendo telemetria real de todos os ~15 serviços e detectando falhas injetadas via `flagd` de forma orgânica.
 
 ### 3.8 GitHub Actions, Dependabot, Trivy e Quality Gate
 * **O que são**:
@@ -231,6 +233,19 @@ Quando um incidente ocorre (ou durante uma investigação ativa):
 3. O `QualityGateService` verifica no banco se há algum incidente `SEV1` ativo ou alerta crítico (`SEV2` com `source = 'ALERT'`) afetando o serviço.
    - Se houver, retorna **HTTP 409 Conflict** com o detalhe dos incidentes bloqueadores e o pipeline aborta o deploy (`exit 1`).
    - Se estiver limpo, retorna **HTTP 200 OK (`PASSED`)**, o deploy prossegue e ao final o pipeline envia `POST /api/webhooks/deploys` registrando versão, `commitSha`, `committedAt`, ambiente e autor.
+
+### 6.5 Fluxo de Simulação de Microsserviços e Injeção de Falhas (`demo/`)
+Para reproduzir cenários reais de produção, a pasta `demo/` automatiza a conexão entre o Argos e a **OpenTelemetry Demo**:
+1. **Provisionamento da chave (`demo/seed.sh`)**: Ao subir `docker compose up --build -d`, o container `seed` cria a organização `Loja Demo`, o usuário `admin@demo.argos` e grava a chave `ARGOS_API_KEY` em `demo/generated/argos.env`.
+2. **Acoplamento ao OpenTelemetry Collector (`demo/start-demo.{ps1,sh}`)**:
+   - Clona a tag `3.1.0` da `opentelemetry-demo` em `demo/opentelemetry-demo/`.
+   - Injeta a `ARGOS_API_KEY` no template `demo/otelcol-config-extras.yml.template`, criando 3 pipelines paralelos no Collector (`traces/argos`, `logs/argos`, `metrics/argos`) com o exporter `otlphttp/argos` apontando para `http://host.docker.internal:8081/api/webhooks/otlp` (`encoding: json`, sem compressão).
+   - Aplica o overlay `demo/compose.argos.yaml` mapeando `host.docker.internal` e ajustando limites de memória e *healthchecks* para estabilidade em Docker Desktop/WSL2 e Linux.
+3. **Injeção de falha controlada + deploy (`demo/trigger-failure.{ps1,sh}`)**:
+   - Registra um deploy (`v1.4.2` por `ci-bot`) via `POST /api/webhooks/deploys` no serviço afetado para habilitar a correlação DORA.
+   - Chama `POST http://localhost:8080/feature/api/write` no `flagd-ui` ativando uma das falhas reais: `cartFailure` (`cart`), `productCatalogFailure` (`product-catalog`), `paymentFailure` (`payment`) ou `adFailure` (`ad`).
+   - **Detecção orgânica**: Nenhum alerta falso é enviado. Como o `load-generator` continua gerando compras, os microsserviços passam a emitir spans OTLP reais com erro; o `TelemetryMonitor` do Argos detecta a degradação, abre o incidente automaticamente e atualiza Topologia e RED ao vivo.
+   - Ao executar o script com `-Reset`, a *feature flag* volta para `off`, a telemetria normaliza e o Argos resolve o incidente automaticamente.
 
 ---
 
