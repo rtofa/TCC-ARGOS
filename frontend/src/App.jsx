@@ -11,6 +11,8 @@ import Deploys from './pages/Deploys.jsx'
 import Telemetry from './pages/Telemetry.jsx'
 import AlertSources from './pages/AlertSources.jsx'
 import ApiKeys from './pages/ApiKeys.jsx'
+import BusinessKpis from './pages/BusinessKpis.jsx'
+import Dashboards from './pages/Dashboards.jsx'
 
 function RequireAuth() {
   const { status } = useAuth()
@@ -33,6 +35,8 @@ export default function App() {
             <Route path="telemetry" element={<Telemetry />} />
             <Route path="alert-sources" element={<AlertSources />} />
             <Route path="settings/api-keys" element={<ApiKeys />} />
+            <Route path="settings/business" element={<BusinessKpis />} />
+            <Route path="dashboards" element={<Dashboards />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

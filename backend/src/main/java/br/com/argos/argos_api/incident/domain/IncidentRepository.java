@@ -14,6 +14,16 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     Optional<Incident> findByIdAndOrganizationId(UUID id, UUID organizationId);
 
+    @Query("""
+            SELECT i FROM Incident i
+            WHERE i.organizationId = :organizationId
+              AND i.openedAt < :to
+              AND (i.resolvedAt IS NULL OR i.resolvedAt >= :from)
+            ORDER BY i.openedAt DESC
+            """)
+    List<Incident> findOverlapping(@Param("organizationId") UUID organizationId, @Param("from") Instant from,
+                                   @Param("to") Instant to);
+
     // avg() ignores NULLs, so incidents still pending acknowledgement/resolution stay out of each average.
     @Query(value = """
             SELECT count(*) AS count,

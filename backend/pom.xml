@@ -29,6 +29,7 @@
 	<properties>
 		<java.version>17</java.version>
 		<spring-modulith.version>2.1.2</spring-modulith.version>
+		<langchain4j.version>1.23.0</langchain4j.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -73,6 +74,19 @@
 			<artifactId>spring-modulith-starter-core</artifactId>
 		</dependency>
 
+		<!-- AI investigations (AI-01, AI-02, AI-05): agents, tools, memory and guardrails on top of the Claude API. -->
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-open-ai</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-anthropic</artifactId>
+		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-devtools</artifactId>
@@ -136,6 +150,13 @@
 				<groupId>org.springframework.modulith</groupId>
 				<artifactId>spring-modulith-bom</artifactId>
 				<version>${spring-modulith.version}</version>
+				<type>pom</type>
+				<scope>import</scope>
+			</dependency>
+			<dependency>
+				<groupId>dev.langchain4j</groupId>
+				<artifactId>langchain4j-bom</artifactId>
+				<version>${langchain4j.version}</version>
 				<type>pom</type>
 				<scope>import</scope>
 			</dependency>

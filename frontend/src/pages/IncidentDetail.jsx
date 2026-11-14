@@ -7,6 +7,9 @@ import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge, StatusBadge, ServiceChips } from '../components/Badges.jsx'
 import { DeployList } from '../components/DeployList.jsx'
 import IncidentTelemetry from '../components/IncidentTelemetry.jsx'
+import InvestigationCard from '../components/InvestigationCard.jsx'
+import IncidentAssistant from '../components/IncidentAssistant.jsx'
+import IncidentImpactCard from '../components/IncidentImpactCard.jsx'
 import { SEVERITIES, SEVERITY_LABEL, STATUSES, STATUS_LABEL, formatDateTime, formatDuration, timeAgo } from '../format.js'
 
 /** Deploys up to this long before the incident opened are shown as possible causes. */
@@ -240,6 +243,10 @@ export default function IncidentDetail() {
             <p className="prose">{data.description || <span className="muted">Sem descrição.</span>}</p>
           </section>
 
+          <InvestigationCard incidentId={id} editable={editable} />
+
+          <IncidentAssistant incidentId={id} />
+
           <IncidentTelemetry incident={data} />
 
           <section className="card">
@@ -264,6 +271,8 @@ export default function IncidentDetail() {
         </div>
 
         <aside className="detail-side">
+          <IncidentImpactCard incident={data} />
+
           <section className="card">
             <h2>Detalhes</h2>
             <dl className="facts">

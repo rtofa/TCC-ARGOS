@@ -60,3 +60,16 @@ export function formatMs(ms) {
   if (ms < 1000) return `${ms.toFixed(ms < 10 ? 1 : 0)} ms`
   return `${(ms / 1000).toFixed(2)} s`
 }
+
+const money = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', maximumFractionDigits: 0 })
+const moneyCompact = new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL', notation: 'compact', maximumFractionDigits: 1 })
+const decimal = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 })
+
+/** 26400 -> "R$ 26.400"; compact -> "R$ 26,4 mil". */
+export function formatMoney(value, { compact = false } = {}) {
+  if (value === null || value === undefined) return '—'
+  return (compact ? moneyCompact : money).format(Number(value))
+}
+
+/** 1234.5 -> "1.234,5". */
+export const formatNumber = (value) => (value === null || value === undefined ? '—' : decimal.format(Number(value)))
