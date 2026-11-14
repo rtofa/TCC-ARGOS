@@ -1,17 +1,16 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { api, query } from '../api.js'
-import { useAsync } from '../hooks/useApi.js'
+import { useApi, useAsync } from '../hooks/useApi.js'
 import { useAuth } from '../auth/useAuth.js'
 import { Icon, StatusIcon } from '../components/Icon.jsx'
-import { LogoMark } from '../components/Logo.jsx'
 import { SeverityBadge } from '../components/Badges.jsx'
 import CommandSearch from '../components/CommandSearch.jsx'
 import IncidentsPerDay from '../components/IncidentsPerDay.jsx'
 import ServiceTopologyGraph from '../components/ServiceTopologyGraph.jsx'
 import { Loading, ErrorState } from '../components/States.jsx'
-import { SEVERITIES, STATUS_LABEL, formatDuration, timeAgo } from '../format.js'
-import { loadRecentPages, visiblePages } from '../navigation.js'
+import { STATUS_LABEL, formatDuration, formatMoney, timeAgo } from '../format.js'
+import { visiblePages } from '../navigation.js'
 
 const DAY_MS = 86400e3
 const CHART_DAYS = 14
@@ -185,8 +184,6 @@ function buildChecklist(data, role) {
   ]
 }
 
-const greetingFor = (hour) => (hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite')
-const capitalize = (text) => text.charAt(0).toUpperCase() + text.slice(1)
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`
 
 // --- widgets ---------------------------------------------------------------------------------
@@ -212,46 +209,7 @@ const WidgetLink = ({ to, children }) => (
   </Link>
 )
 
-function HealthWidget({ data }) {
-  const total = data.active.totalElements
-  const status = total === 0 ? 'good' : data.active.content.some((i) => SEVERITY_RANK[i.severity] <= 1) ? 'critical' : 'warning'
-  const bySeverity = Object.fromEntries(SEVERITIES.map((s) => [s, data.active.content.filter((i) => i.severity === s).length]))
-  return (
-    <Widget title="Saúde agora" icon="incidents" className="span-4" action={<WidgetLink to="/incidents?status=OPEN&status=INVESTIGATING&status=MITIGATED">Ativos</WidgetLink>}>
-      <div className={`health health-${status}`}>
-        <p className="hero-figure">{total}</p>
-        <p className="health-label">
-          <StatusIcon status={status} />
-          {total === 0 ? 'Nenhum incidente ativo' : plural(total, 'incidente ativo', 'incidentes ativos')}
-        </p>
-      </div>
-      <ul className="severity-counts" aria-label="Incidentes ativos por severidade">
-        {SEVERITIES.map((severity) => (
-          <li key={severity}>
-            <SeverityBadge severity={severity} />
-            <strong>{bySeverity[severity]}</strong>
-          </li>
-        ))}
-      </ul>
-      <dl className="mini-stats">
-        <div>
-          <dt>MTTA · 7 dias</dt>
-          <dd>{formatDuration(data.metrics.mttaSeconds)}</dd>
-        </div>
-        <div>
-          <dt>MTTR · 7 dias</dt>
-          <dd>{formatDuration(data.metrics.mttrSeconds)}</dd>
-        </div>
-        <div>
-          <dt>Deploys · 7 dias</dt>
-          <dd>{data.weekDeploys}</dd>
-        </div>
-      </dl>
-    </Widget>
-  )
-}
-
-function ServiceMapWidget({ services, topology }) {
+function ServiceMapWidget({ services, topology, className = 'span-8' }) {
   const navigate = useNavigate()
   const hasGraph = (topology?.edges?.length ?? 0) > 0
   const [view, setView] = useState('auto')
@@ -261,7 +219,7 @@ function ServiceMapWidget({ services, topology }) {
     <Widget
       title="Mapa de serviços e topologia (OpenTelemetry ao vivo)"
       icon="service"
-      className="span-8"
+      className={className}
       action={
         <span className="inline-actions no-margin">
           {hasGraph && (
@@ -329,6 +287,106 @@ function ServiceMapWidget({ services, topology }) {
   )
 }
 
+const CONFIDENCE_TEXT = { ALTA: 'confiança alta', MEDIA: 'confiança média', BAIXA: 'confiança baixa' }
+
+function KpiTile({ to, label, value, hint, status }) {
+  return (
+    <Link to={to} className="home-kpi">
+      <span className="home-kpi-label">
+        {status && <StatusIcon status={status} size={15} />}
+        {label}
+      </span>
+      <strong className="home-kpi-value">{value}</strong>
+      <span className="home-kpi-hint">{hint}</span>
+    </Link>
+  )
+}
+
+/** The four numbers that matter first: what is broken, what it costs, how fast we fix, what changed. */
+function KpiStrip({ data, executive }) {
+  const total = data.active.totalElements
+  const critical = data.active.content.filter((i) => SEVERITY_RANK[i.severity] <= 1).length
+  const status = total === 0 ? 'good' : critical > 0 ? 'critical' : 'warning'
+  const lastDeploy = data.deploys.content[0]
+  const loss = executive?.totalLoss
+  return (
+    <div className="home-kpis">
+      <KpiTile to="/incidents?status=OPEN&status=INVESTIGATING&status=MITIGATED" label="Incidentes ativos" status={status}
+        value={total} hint={total === 0 ? 'Todos os serviços operacionais' : plural(critical, 'crítico (SEV1/SEV2)', 'críticos (SEV1/SEV2)')} />
+      <KpiTile to="/dashboards?painel=executivo&dias=7" label="Perda estimada · 24 h"
+        value={loss === undefined ? '…' : formatMoney(loss, { compact: Number(loss) >= 100000 })}
+        hint={executive && !executive.kpisConfigured ? 'Configure os KPIs de negócio' : 'pedidos e receita em risco'} />
+      <KpiTile to="/overview" label="Tempo até resolver · 7 dias" value={formatDuration(data.metrics.mttrSeconds)}
+        hint={`reconhecimento em ${formatDuration(data.metrics.mttaSeconds)}`} />
+      <KpiTile to="/deploys" label="Deploys · 7 dias" value={data.weekDeploys}
+        hint={lastDeploy ? `último: ${lastDeploy.service} ${lastDeploy.version}, ${timeAgo(lastDeploy.deployedAt)}` : 'nenhum registrado'} />
+    </div>
+  )
+}
+
+function InvestigationCell({ investigation }) {
+  if (!investigation) return <span className="muted small">Ainda não investigado</span>
+  if (investigation.status === 'PENDING' || investigation.status === 'RUNNING') {
+    return <span className="home-investigating"><span className="spinner" aria-hidden="true" /> Investigando…</span>
+  }
+  if (investigation.status === 'FAILED') return <span className="muted small">A investigação falhou</span>
+  return (
+    <span className="home-cause">
+      <span className="home-cause-text">{investigation.rootCause}</span>
+      <span className="muted small">
+        {investigation.mode === 'AI' ? <span className="badge badge-ai">IA</span> : <span className="badge">Regras</span>}{' '}
+        {CONFIDENCE_TEXT[investigation.confidence] ?? ''}
+      </span>
+    </span>
+  )
+}
+
+/** Active incidents with the cause the AI found and what each one is costing: the core of the home. */
+function ActiveIncidentsWidget({ items }) {
+  return (
+    <Widget title="Incidentes ativos" icon="incidents" className="span-12"
+      action={<WidgetLink to="/incidents?status=OPEN&status=INVESTIGATING&status=MITIGATED">Ver todos</WidgetLink>}>
+      {!items ? <Loading /> : items.length === 0 ? (
+        <p className="home-all-good"><StatusIcon status="good" size={18} /> Nenhum incidente ativo: tudo operacional.</p>
+      ) : (
+        <div className="table-scroll">
+          <table className="table home-incidents">
+            <thead>
+              <tr>
+                <th>Incidente</th>
+                <th>Status</th>
+                <th>Causa provável</th>
+                <th className="numeric">Impacto estimado</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items.map((incident) => (
+                <tr key={incident.id}>
+                  <td>
+                    <span className="home-incident-title">
+                      <SeverityBadge severity={incident.severity} />
+                      <Link to={`/incidents/${incident.id}`}>{incident.title}</Link>
+                    </span>
+                    <span className="muted small">
+                      {incident.services.length ? `${incident.services.join(', ')} · ` : ''}aberto {timeAgo(incident.openedAt)}
+                    </span>
+                  </td>
+                  <td className="nowrap">{STATUS_LABEL[incident.status]}</td>
+                  <td><InvestigationCell investigation={incident.investigation} /></td>
+                  <td className="numeric nowrap">
+                    {incident.impactValue === null ? <span className="muted" title="Nenhum KPI ligado aos serviços">—</span>
+                      : formatMoney(incident.impactValue, { compact: Number(incident.impactValue) >= 100000 })}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Widget>
+  )
+}
+
 function ActivityWidget({ events }) {
   return (
     <Widget title="Atividade recente" icon="clock" className="span-4">
@@ -351,26 +409,6 @@ function ActivityWidget({ events }) {
           ))}
         </ol>
       )}
-    </Widget>
-  )
-}
-
-function QuickAccessWidget({ session }) {
-  const [recentPaths] = useState(loadRecentPages)
-  const allowed = visiblePages(session).filter((page) => page.path !== '/')
-  const recent = recentPaths.map((path) => allowed.find((page) => page.path === path)).filter(Boolean)
-  const pages = [...recent, ...allowed.filter((page) => !recent.includes(page))].slice(0, 4)
-  return (
-    <Widget title={recent.length ? 'Visitados recentemente' : 'Acesso rápido'} icon="home" className="span-4">
-      <div className="quick-grid">
-        {pages.map((page) => (
-          <Link key={page.path} to={page.path} className="quick-tile">
-            <span className="quick-icon"><Icon name={page.icon} size={18} /></span>
-            <strong>{page.label}</strong>
-            <span className="muted small">{page.description}</span>
-          </Link>
-        ))}
-      </div>
     </Widget>
   )
 }
@@ -407,36 +445,15 @@ function ChecklistWidget({ steps }) {
   )
 }
 
-const ROADMAP = [
-  { icon: 'monitor', title: 'Monitores inteligentes', code: 'MON-01 · MON-07', text: 'Detecção de anomalias que avisa antes da falha.' },
-  { icon: 'kpi', title: 'Impacto no negócio', code: 'NEG-01 · NEG-03', text: 'Quanto cada incidente custa em pedidos e receita.' },
-  { icon: 'sparkle', title: 'Resumo com IA', code: 'AI-01', text: 'Resumo técnico e executivo de cada incidente.' },
-]
-
-function RoadmapWidget() {
-  return (
-    <Widget title="Em breve no Argos" icon="sparkle" className="span-4">
-      <ul className="roadmap">
-        {ROADMAP.map((item) => (
-          <li key={item.title}>
-            <span className="quick-icon"><Icon name={item.icon} size={18} /></span>
-            <span>
-              <strong>{item.title}</strong> <span className="badge">{item.code}</span>
-              <span className="muted small roadmap-text">{item.text}</span>
-            </span>
-          </li>
-        ))}
-      </ul>
-    </Widget>
-  )
-}
-
 // --- page ------------------------------------------------------------------------------------
 
 export default function Console() {
   const { session } = useAuth()
-  const [today] = useState(() => new Date())
   const { data, error, loading, reload } = useAsync(session.role, loadConsole, 5000)
+  const activeIncidents = useApi('/ai/active-incidents', 15000)
+  const executive = useApi('/business/executive?days=1', 60000)
+  const checklist = data ? buildChecklist(data, session.role) : []
+  const checklistDone = checklist.every((step) => step.done)
 
   const services = data ? buildServices(data.active.content, data.recent.content, data.deploys.content, data.telemetryServices) : []
   const incidents = data
@@ -459,48 +476,40 @@ export default function Console() {
 
   return (
     <div className="console">
-      <section className="console-hero">
-        <span className="console-hero-art" aria-hidden="true">
-          <LogoMark size={300} />
-        </span>
-        <div className="console-hero-top">
-          <div>
-            <p className="console-date">{capitalize(today.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }))}</p>
-            <h1>{greetingFor(today.getHours())}</h1>
-            <p className="console-sub">Tudo o que importa sobre os seus serviços, em um só lugar.</p>
-          </div>
-          {data && (
-            <Link to={activeTotal ? '/incidents?status=OPEN&status=INVESTIGATING&status=MITIGATED' : '/overview'} className={`health-pill health-pill-${overall}`}>
-              <StatusIcon status={overall} size={16} />
-              {activeTotal === 0 ? 'Todos os serviços operacionais' : plural(activeTotal, 'incidente ativo', 'incidentes ativos')}
-            </Link>
-          )}
-        </div>
+      <header className="home-header">
+        <h1 className="sr-only">Início</h1>
         <CommandSearch items={searchItems} />
-      </section>
+        {data && (
+          <Link to={activeTotal ? '/incidents?status=OPEN&status=INVESTIGATING&status=MITIGATED' : '/overview'} className={`status-pill status-pill-${overall}`}>
+            <StatusIcon status={overall} size={16} />
+            {activeTotal === 0 ? 'Todos os serviços operacionais' : plural(activeTotal, 'incidente ativo', 'incidentes ativos')}
+          </Link>
+        )}
+      </header>
 
       {error && <ErrorState error={error} onRetry={reload} />}
       {!data && !error && <Loading label="Montando seu console…" />}
       {data && (
-        <div className={`console-grid ${loading ? 'is-refreshing' : ''}`}>
-          <HealthWidget data={data} />
-          <Widget
-            title={`Incidentes abertos por dia · ${CHART_DAYS} dias`}
-            icon="overview"
-            className="span-8"
-            action={<WidgetLink to="/overview">Visão geral</WidgetLink>}
-          >
-            <IncidentsPerDay days={dailyCounts(data.recent.content, data.chartStart, data.now, data.deploys.content)} />
-            {data.recent.totalElements > data.recent.content.length && (
-              <p className="muted small">Mostrando os {data.recent.content.length} incidentes mais recentes do período.</p>
-            )}
-          </Widget>
-          <ServiceMapWidget services={services} topology={data.topology} />
-          <ActivityWidget events={buildActivity(data.recent.content, data.deploys.content)} />
-          <QuickAccessWidget session={session} />
-          <ChecklistWidget steps={buildChecklist(data, session.role)} />
-          <RoadmapWidget />
-        </div>
+        <>
+          <KpiStrip data={data} executive={executive.data} />
+          <div className={`console-grid ${loading ? 'is-refreshing' : ''}`}>
+            <ActiveIncidentsWidget items={activeIncidents.data} />
+            <Widget
+              title={`Incidentes abertos por dia · ${CHART_DAYS} dias`}
+              icon="overview"
+              className="span-8"
+              action={<WidgetLink to="/overview">Visão geral</WidgetLink>}
+            >
+              <IncidentsPerDay days={dailyCounts(data.recent.content, data.chartStart, data.now, data.deploys.content)} />
+              {data.recent.totalElements > data.recent.content.length && (
+                <p className="muted small">Mostrando os {data.recent.content.length} incidentes mais recentes do período.</p>
+              )}
+            </Widget>
+            <ActivityWidget events={buildActivity(data.recent.content, data.deploys.content)} />
+            <ServiceMapWidget services={services} topology={data.topology} className={checklistDone ? 'span-12' : 'span-8'} />
+            {!checklistDone && <ChecklistWidget steps={checklist} />}
+          </div>
+        </>
       )}
     </div>
   )

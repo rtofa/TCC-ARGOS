@@ -14,11 +14,15 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
+import br.com.argos.argos_api.incident.IncidentOpened;
+import org.springframework.data.domain.AfterDomainEventPublication;
+import org.springframework.data.domain.DomainEvents;
 import org.springframework.data.domain.Persistable;
 
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Objects;
@@ -40,6 +44,10 @@ public class Incident implements Persistable<UUID> {
     @Transient
     @Getter(AccessLevel.NONE)
     private boolean isNew = true;
+
+    @Transient
+    @Getter(AccessLevel.NONE)
+    private boolean openedEventPending;
 
     @Column(name = "organization_id", nullable = false, updatable = false)
     private UUID organizationId;
@@ -103,7 +111,21 @@ public class Incident implements Persistable<UUID> {
         if (assigneeId != null) {
             incident.acknowledgedAt = now;
         }
+        incident.openedEventPending = true;
         return incident;
+    }
+
+    /** Published by Spring Data on the first save; built lazily so openFromAlert's source is already set. */
+    @DomainEvents
+    Collection<Object> domainEvents() {
+        return openedEventPending
+                ? List.of(new IncidentOpened(organizationId, id, source.name(), openedAt))
+                : List.of();
+    }
+
+    @AfterDomainEventPublication
+    void clearDomainEvents() {
+        openedEventPending = false;
     }
 
     /**

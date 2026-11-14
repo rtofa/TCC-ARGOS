@@ -5,6 +5,14 @@ export const PAGES = [
   { path: '/incidents', label: 'Incidentes', icon: 'incidents', description: 'Acompanhe, investigue e resolva' },
   { path: '/deploys', label: 'Deploys', icon: 'deploys', description: 'O que mudou, onde e quando' },
   { path: '/telemetry', label: 'Telemetria', icon: 'monitor', description: 'Traces, logs e serviços em tempo real' },
+  { path: '/dashboards', label: 'Dashboards', icon: 'overview', description: 'Executivo, operação, entrega e serviços' },
+  {
+    path: '/settings/business',
+    label: 'KPIs de negócio',
+    icon: 'kpi',
+    description: 'Pedidos e receita que cada serviço sustenta',
+    section: 'integrations',
+  },
   {
     path: '/alert-sources',
     label: 'Fontes de alerta',
