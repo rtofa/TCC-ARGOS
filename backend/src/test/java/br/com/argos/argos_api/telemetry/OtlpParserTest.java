@@ -100,4 +100,45 @@ class OtlpParserTest {
         assertThatThrownBy(() -> parser.parseTraces("{nope")).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> parser.parseTraces("[1]")).isInstanceOf(IllegalArgumentException.class);
     }
+
+    @Test
+    void masksLgpdPersonalDataAndSecretsInSpansAndLogs() {
+        String spanBody = """
+                {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"checkout"}}]},
+                 "scopeSpans":[{"spans":[{
+                   "traceId":"%s","spanId":"051581bf3cb55c13",
+                   "name":"GET /clientes/123.456.789-09/maria@loja.com.br",
+                   "startTimeUnixNano":"%s","endTimeUnixNano":"%s",
+                   "attributes":[
+                     {"key":"enduser.email","value":{"stringValue":"joao.silva@exemplo.com.br"}},
+                     {"key":"customer.cpf","value":{"stringValue":"99988877766"}},
+                     {"key":"http.request.header.authorization","value":{"stringValue":"Bearer segredo_super_longo_123456"}},
+                     {"key":"client.ip","value":{"stringValue":"192.168.10.55"}},
+                     {"key":"http.status_code","value":{"intValue":"500"}}
+                   ],
+                   "status":{"code":2,"message":"Erro para CPF 123.456.789-09 telefone (11) 98765-4321"}
+                 }]}]}]}
+                """.formatted(TRACE_ID, OtlpPayloads.nanos(now), OtlpPayloads.nanos(now.plusMillis(25)));
+
+        Batch<ParsedTelemetry.Span> spans = parser.parseTraces(spanBody);
+        assertThat(spans.accepted()).singleElement().satisfies(span -> {
+            assertThat(span.name()).isEqualTo("GET /clientes/[cpf]/[email]");
+            assertThat(span.statusMessage()).isEqualTo("Erro para CPF [cpf] telefone [telefone]");
+            assertThat(span.attributes()).containsEntry("enduser.email", "[email]");
+            assertThat(span.attributes()).containsEntry("customer.cpf", "[cpf]");
+            assertThat(span.attributes()).containsEntry("http.request.header.authorization", "[segredo]");
+            assertThat(span.attributes()).containsEntry("client.ip", "192.168.x.x");
+            assertThat(span.attributes()).containsEntry("http.status_code", 500L);
+        });
+
+        String logBody = OtlpPayloads.logs("checkout",
+                OtlpPayloads.logRecord(now, 17, "ERROR",
+                        "Pagamento falhou CPF 123.456.789-09 CNPJ 12.345.678/0001-99 email user@test.com token=abcd1234",
+                        TRACE_ID));
+        Batch<ParsedTelemetry.Log> logs = parser.parseLogs(logBody);
+        assertThat(logs.accepted()).singleElement().satisfies(log -> {
+            assertThat(log.body()).doesNotContain("123.456.789-09", "12.345.678/0001-99", "user@test.com", "abcd1234");
+            assertThat(log.body()).contains("[cpf]", "[cnpj]", "[email]", "[segredo]");
+        });
+    }
 }

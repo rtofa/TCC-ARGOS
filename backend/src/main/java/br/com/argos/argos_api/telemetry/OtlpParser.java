@@ -1,5 +1,6 @@
 package br.com.argos.argos_api.telemetry;
 
+import br.com.argos.argos_api.shared.pii.PiiMasker;
 import br.com.argos.argos_api.telemetry.ParsedTelemetry.Batch;
 import org.springframework.stereotype.Component;
 import tools.jackson.core.JacksonException;
@@ -142,9 +143,12 @@ class OtlpParser {
         long durationNs = end == null ? 0 : Math.max(0, nanosBetween(start, end));
         String parent = hex(text(node, "parentSpanId"), SPAN_ID, ZERO_SPAN_ID);
         JsonNode status = node.path("status");
-        return new ParsedTelemetry.Span(traceId, spanId, parent, service, truncate(name, 500),
+        String safeName = truncate(PiiMasker.maskText(name), 500);
+        String statusMsg = text(status, "message");
+        String safeStatusMsg = statusMsg == null ? null : truncate(PiiMasker.maskText(statusMsg), MAX_VALUE_LENGTH);
+        return new ParsedTelemetry.Span(traceId, spanId, parent, service, safeName,
                 node.path("kind").isNumber() ? node.path("kind").asInt() : 0, start, durationNs,
-                statusCode(status.path("code")), truncate(text(status, "message"), MAX_VALUE_LENGTH),
+                statusCode(status.path("code")), safeStatusMsg,
                 attributes(node.path("attributes")));
     }
 
@@ -157,8 +161,9 @@ class OtlpParser {
         if (time == null || body == null) {
             return null;
         }
+        String safeBody = truncate(PiiMasker.maskText(String.valueOf(body)), MAX_LOG_BODY_LENGTH);
         return new ParsedTelemetry.Log(time, service, node.path("severityNumber").asInt(0),
-                truncate(text(node, "severityText"), 20), truncate(String.valueOf(body), MAX_LOG_BODY_LENGTH),
+                truncate(text(node, "severityText"), 20), safeBody,
                 hex(text(node, "traceId"), TRACE_ID, ZERO_TRACE_ID), hex(text(node, "spanId"), SPAN_ID, ZERO_SPAN_ID),
                 attributes(node.path("attributes")));
     }
@@ -208,7 +213,9 @@ class OtlpParser {
             String key = text(attribute, "key");
             Object value = anyValue(attribute.path("value"));
             if (key != null && value != null) {
-                map.put(truncate(key, 200), value instanceof String s ? truncate(s, MAX_VALUE_LENGTH) : value);
+                String cleanKey = truncate(key, 200);
+                Object masked = PiiMasker.maskAttribute(cleanKey, value);
+                map.put(cleanKey, masked instanceof String s ? truncate(s, MAX_VALUE_LENGTH) : masked);
             }
         }
         return map;

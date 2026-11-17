@@ -165,4 +165,42 @@ class OtlpIngestIT extends AbstractIntegrationTest {
         String title = jdbc.queryForObject("SELECT title FROM incidents WHERE organization_id = ?", String.class, orgA);
         assertThat(title).contains("Degradação de latência p95 em checkout");
     }
+
+    @Test
+    void masksPersonalDataAndSecretsBeforePersistingTracesAndLogs() throws Exception {
+        String spanPayload = """
+                {"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"checkout"}}]},
+                 "scopeSpans":[{"spans":[{
+                   "traceId":"%s","spanId":"051581bf3cb55c99",
+                   "name":"POST /pagamentos/123.456.789-09",
+                   "startTimeUnixNano":"%s","endTimeUnixNano":"%s",
+                   "attributes":[
+                     {"key":"customer.email","value":{"stringValue":"cliente@empresa.com.br"}},
+                     {"key":"password","value":{"stringValue":"minhaSenha123"}}
+                   ],
+                   "status":{"code":2,"message":"Falha de cartao para joao@teste.com"}
+                 }]}]}]}
+                """.formatted(TRACE_ID, OtlpPayloads.nanos(now), OtlpPayloads.nanos(now.plusMillis(40)));
+
+        send("traces", keyA, spanPayload).andExpect(status().isOk());
+        send("logs", keyA, OtlpPayloads.logs("checkout",
+                OtlpPayloads.logRecord(now, 17, "ERROR",
+                        "CPF 123.456.789-09 telefone (11) 99876-5432 email ana@loja.com", TRACE_ID)))
+                .andExpect(status().isOk());
+
+        var storedSpan = jdbc.queryForMap(
+                "SELECT name, status_message, attributes::text AS attrs FROM telemetry_spans WHERE organization_id = ? AND span_id = ?",
+                orgA, "051581bf3cb55c99");
+        assertThat(String.valueOf(storedSpan.get("name"))).isEqualTo("POST /pagamentos/[cpf]");
+        assertThat(String.valueOf(storedSpan.get("status_message"))).isEqualTo("Falha de cartao para [email]");
+        assertThat(String.valueOf(storedSpan.get("attrs")))
+                .contains("[email]", "[segredo]")
+                .doesNotContain("cliente@empresa.com.br", "minhaSenha123");
+
+        String storedLogBody = jdbc.queryForObject(
+                "SELECT body FROM telemetry_logs WHERE organization_id = ?", String.class, orgA);
+        assertThat(storedLogBody)
+                .contains("[cpf]", "[telefone]", "[email]")
+                .doesNotContain("123.456.789-09", "99876-5432", "ana@loja.com");
+    }
 }
