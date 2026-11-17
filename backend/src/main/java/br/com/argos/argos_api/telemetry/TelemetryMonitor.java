@@ -127,8 +127,8 @@ class TelemetryMonitor {
     void evaluate(ApiKeyPrincipal key, Set<String> touchedServices) {
         Instant now = clock.instant();
         Map<String, RuleConfig> rulesByService = loadRules(key.organizationId());
-        for (String service : touchedServices) {
-            if (service == null || IGNORED_SERVICES.contains(service)) {
+        for (String service : touchedServices.stream().filter(java.util.Objects::nonNull).sorted().toList()) {
+            if (IGNORED_SERVICES.contains(service)) {
                 continue;
             }
             RuleConfig rule = rulesByService.getOrDefault(service,

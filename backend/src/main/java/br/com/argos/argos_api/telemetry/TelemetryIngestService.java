@@ -26,13 +26,12 @@ class TelemetryIngestService {
     }
 
     /** The organization always comes from the API key, never from the payload. */
-    @Transactional
     Map<String, Object> ingestTraces(ApiKeyPrincipal key, String body) {
         Batch<ParsedTelemetry.Span> batch = parser.parseTraces(body);
         store.saveSpans(key.organizationId(), batch.accepted(), clock.instant());
         Set<String> services = batch.accepted().stream()
                 .map(ParsedTelemetry.Span::service)
-                .collect(Collectors.toSet());
+                .collect(Collectors.toCollection(java.util.TreeSet::new));
         if (!services.isEmpty()) {
             monitor.evaluate(key, services);
         }

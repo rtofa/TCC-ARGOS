@@ -2,6 +2,7 @@ package br.com.argos.argos_api.telemetry;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.sql.Timestamp;
@@ -22,6 +23,7 @@ class TelemetryStore {
         this.jdbc = jdbc;
     }
 
+    @Transactional
     void saveSpans(UUID organizationId, List<ParsedTelemetry.Span> spans, Instant receivedAt) {
         if (spans.isEmpty()) {
             return;
@@ -48,6 +50,7 @@ class TelemetryStore {
         });
     }
 
+    @Transactional
     void saveLogs(UUID organizationId, List<ParsedTelemetry.Log> logs, Instant receivedAt) {
         if (logs.isEmpty()) {
             return;
@@ -70,6 +73,7 @@ class TelemetryStore {
         });
     }
 
+    @Transactional
     void saveMetrics(UUID organizationId, List<ParsedTelemetry.Metric> metrics, Instant receivedAt) {
         if (metrics.isEmpty()) {
             return;
