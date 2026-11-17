@@ -21,7 +21,7 @@ class OrganizationMembersImpl implements OrganizationMembers {
             return false;
         }
         return userRepository.findById(userId)
-                .map(user -> organizationId.equals(user.getOrganizationId()))
+                .map(user -> organizationId.equals(user.getOrganizationId()) && user.isActive())
                 .orElse(false);
     }
 }

@@ -14,6 +14,7 @@ import jakarta.persistence.EnumType;
 import lombok.Getter;
 import lombok.Setter;
 
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 
@@ -22,26 +23,32 @@ import java.util.UUID;
 @Getter
 @Setter
 public class User {
-    
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
-    
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "organization_id", insertable = false, updatable = false)
     private Organization organization;
 
     @Column(name = "organization_id")
     private UUID organizationId;
-    
+
     private String name;
-    
+
     private String email;
-    
+
     private String passwordHash;
-    
+
     @Enumerated(EnumType.STRING)
     private Role role;
-    
+
+    @Column(nullable = false)
+    private boolean active = true;
+
+    @Column(name = "last_login_at")
+    private Instant lastLoginAt;
+
     private LocalDateTime createdAt = LocalDateTime.now();
 }
