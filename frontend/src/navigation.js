@@ -7,6 +7,13 @@ export const PAGES = [
   { path: '/telemetry', label: 'Telemetria', icon: 'monitor', description: 'Traces, logs e serviços em tempo real' },
   { path: '/dashboards', label: 'Dashboards', icon: 'overview', description: 'Executivo, operação, entrega e serviços' },
   {
+    path: '/integrations',
+    label: 'Integrações',
+    icon: 'plug',
+    description: 'Catálogo de conectores e avisos (Slack, Discord, E-mail)',
+    section: 'integrations',
+  },
+  {
     path: '/settings/business',
     label: 'KPIs de negócio',
     icon: 'kpi',
