@@ -23,25 +23,21 @@ const INFRA_SERVICES = new Set(['otelcol-contrib', 'load-generator', 'flagd', 'f
 
 const optional = (promise) => promise.catch(() => null)
 
-async function loadConsole(role) {
+async function loadConsole() {
   const now = Date.now()
   const chartStart = new Date(now)
   chartStart.setHours(0, 0, 0, 0)
   chartStart.setDate(chartStart.getDate() - (CHART_DAYS - 1))
   const weekAgo = new Date(now - 7 * DAY_MS).toISOString()
 
-  const [active, recent, deploys, weekDeploys, anyIncident, metrics, telemetryServices, topology, sources, channels, keys] = await Promise.all([
+  const [active, recent, deploys, weekDeploys, metrics, telemetryServices, topology] = await Promise.all([
     api.get(`/incidents${query({ status: ACTIVE, size: 100 })}`),
     api.get(`/incidents${query({ openedFrom: chartStart.toISOString(), size: 100 })}`),
     api.get(`/deploys${query({ size: 50 })}`),
     api.get(`/deploys${query({ from: weekAgo, size: 1 })}`),
-    api.get(`/incidents${query({ size: 1 })}`),
     api.get(`/incidents/metrics${query({ openedFrom: weekAgo })}`),
     optional(api.get('/telemetry/services')),
     optional(api.get('/telemetry/topology')),
-    optional(api.get('/alert-sources')),
-    optional(api.get('/notifications/channels')),
-    role === 'ADMIN' ? optional(api.get('/api-keys')) : Promise.resolve(null),
   ])
   return {
     now,
@@ -49,13 +45,9 @@ async function loadConsole(role) {
     recent,
     deploys,
     weekDeploys: weekDeploys.totalElements,
-    hasIncidents: anyIncident.totalElements > 0,
     metrics: metrics.overall,
     telemetryServices: (telemetryServices ?? []).filter((s) => !INFRA_SERVICES.has(s.service)),
     topology,
-    sources,
-    channels,
-    keys,
   }
 }
 
@@ -139,23 +131,6 @@ function buildActivity(incidents, deploys) {
     })
   }
   return events.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 6)
-}
-
-function buildChecklist(data, role) {
-  // Non-admins can't list keys, but deploys or alert-opened incidents prove one exists.
-  const keyInUse = data.deploys.totalElements > 0 || data.recent.content.some((i) => i.source === 'ALERT')
-  return [
-    { label: 'Criar sua organização', done: true },
-    {
-      label: 'Conectar aplicação (OpenTelemetry / X-API-Key)',
-      done: data.telemetryServices.length > 0 || (data.keys ? data.keys.length > 0 : keyInUse),
-      to: '/connect',
-      cta: role === 'ADMIN' ? 'Conectar app' : 'Ver guia',
-    },
-    { label: 'Conectar alertas ou notificações (Slack/Discord)', done: Boolean(data.sources?.length || data.channels?.length), to: '/integrations', cta: 'Configurar' },
-    { label: 'Registrar o primeiro deploy', done: data.deploys.totalElements > 0, to: '/deploys', cta: 'Ver como' },
-    { label: 'Acompanhar o primeiro incidente', done: data.hasIncidents, to: '/incidents', cta: 'Abrir' },
-  ]
 }
 
 const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`
@@ -388,38 +363,6 @@ function ActivityWidget({ events }) {
   )
 }
 
-function ChecklistWidget({ steps }) {
-  const done = steps.filter((step) => step.done).length
-  return (
-    <Widget title="Primeiros passos" icon="check" className="span-4">
-      <div className="meter" role="progressbar" aria-valuemin={0} aria-valuemax={steps.length} aria-valuenow={done} aria-label="Progresso da configuração">
-        <span style={{ width: `${(done / steps.length) * 100}%` }} />
-      </div>
-      <p className="meter-label">
-        <strong>{done} de {steps.length}</strong> concluídos
-      </p>
-      {done === steps.length && (
-        <p className="checklist-ready">
-          <StatusIcon status="good" size={16} />
-          Tudo pronto: o Argos já recebe alertas e deploys da sua organização.
-        </p>
-      )}
-      <ul className="checklist">
-        {steps.map((step) => (
-          <li key={step.label} className={step.done ? 'is-done' : undefined}>
-            <span className="check-mark" aria-hidden="true">{step.done && <Icon name="check" size={12} strokeWidth={3} />}</span>
-            <span className="checklist-label">
-              {step.label}
-              <span className="sr-only">{step.done ? ' (concluído)' : ' (pendente)'}</span>
-            </span>
-            {!step.done && (step.to ? <Link to={step.to} className="small">{step.cta}</Link> : <span className="muted small">{step.cta}</span>)}
-          </li>
-        ))}
-      </ul>
-    </Widget>
-  )
-}
-
 // --- page ------------------------------------------------------------------------------------
 
 export default function Console() {
@@ -427,8 +370,6 @@ export default function Console() {
   const { data, error, loading, reload } = useAsync(session.role, loadConsole, 5000)
   const activeIncidents = useApi('/ai/active-incidents', 15000)
   const executive = useApi('/business/executive?days=1', 60000)
-  const checklist = data ? buildChecklist(data, session.role) : []
-  const checklistDone = checklist.every((step) => step.done)
 
   const services = data ? buildServices(data.active.content, data.recent.content, data.deploys.content, data.telemetryServices) : []
   const incidents = data
@@ -481,7 +422,6 @@ export default function Console() {
             <ActiveIncidentsWidget items={activeIncidents.data} />
             <ServiceMapWidget services={services} topology={data.topology} className="span-8" />
             <ActivityWidget events={buildActivity(data.recent.content, data.deploys.content)} />
-            {!checklistDone && <ChecklistWidget steps={checklist} />}
           </div>
         </>
       )}
