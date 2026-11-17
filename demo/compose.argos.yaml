@@ -1,18 +1,81 @@
 # Camada de compose aplicada por cima do compose.yaml da OpenTelemetry Demo:
 # - mapeia host.docker.internal para o Collector alcancar o Argos no Linux e no Windows;
 # - ajusta o healthcheck e o endpoint OTLP do recommendation (na imagem :latest ele e Java e nao traz o binario nc);
-# - eleva o limite de memoria de product-catalog e checkout (20 MB e pouco para rodar o grpc_health_probe no WSL2).
+# - eleva o limite de memoria de product-catalog, checkout e quote (evita OOM e thrashing de disco no PHP/Go);
+# - desativa o trafego via Chromium headless no load-generator e reduz os limites de memoria para caber com folga no Docker Desktop (~7.5 GB).
 services:
   otel-collector:
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+
+  load-generator:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    environment:
+      - LOCUST_USERS=2
+      - LOCUST_BROWSER_TRAFFIC_ENABLED=false
+      - LOCUST_BROWSER_USER_WEIGHT=0
 
   recommendation:
+    deploy:
+      resources:
+        limits:
+          memory: 350M
     environment:
       - OTEL_EXPORTER_OTLP_ENDPOINT=http://${OTEL_COLLECTOR_HOST}:${OTEL_COLLECTOR_PORT_HTTP}
     healthcheck:
       test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/${RECOMMENDATION_PORT}'"]
       start_period: 20s
+
+  ad:
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+    environment:
+      - JAVA_TOOL_OPTIONS=-Xmx160m -Xms64m
+
+  frontend:
+    deploy:
+      resources:
+        limits:
+          memory: 200M
+
+  frontend-proxy:
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  flagd-ui:
+    deploy:
+      resources:
+        limits:
+          memory: 192M
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  telemetry-docs:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+
+  quote:
+    deploy:
+      resources:
+        limits:
+          memory: 64M
 
   product-catalog:
     deploy:
