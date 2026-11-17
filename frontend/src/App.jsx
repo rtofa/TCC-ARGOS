@@ -14,6 +14,8 @@ import ApiKeys from './pages/ApiKeys.jsx'
 import BusinessKpis from './pages/BusinessKpis.jsx'
 import Dashboards from './pages/Dashboards.jsx'
 import Integrations from './pages/Integrations.jsx'
+import Users from './pages/Users.jsx'
+import ConnectApp from './pages/ConnectApp.jsx'
 
 function RequireAuth() {
   const { status } = useAuth()
@@ -37,8 +39,10 @@ export default function App() {
             <Route path="alert-sources" element={<AlertSources />} />
             <Route path="settings/api-keys" element={<ApiKeys />} />
             <Route path="settings/business" element={<BusinessKpis />} />
+            <Route path="settings/users" element={<Users />} />
             <Route path="dashboards" element={<Dashboards />} />
             <Route path="integrations" element={<Integrations />} />
+            <Route path="connect" element={<ConnectApp />} />
           </Route>
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

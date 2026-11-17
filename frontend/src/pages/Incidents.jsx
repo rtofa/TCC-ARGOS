@@ -6,6 +6,7 @@ import { useAuth, canWrite } from '../auth/useAuth.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge, StatusBadge, ServiceChips } from '../components/Badges.jsx'
 import NewIncidentDialog from '../components/NewIncidentDialog.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { SEVERITIES, STATUSES, STATUS_LABEL, formatDuration, timeAgo } from '../format.js'
 
 const PERIOD_HOURS = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
@@ -64,6 +65,16 @@ export default function Incidents() {
           </button>
         )}
       </header>
+
+      <PageGuide
+        id="incidents"
+        summary="Central de gestão de crises: incidentes são abertos manualmente, por webhooks de alerta (agrupados por serviço) ou pelo monitor automático de SLO OTLP."
+        steps={[
+          'Clique em um incidente para abrir a Sala de Guerra com IA investigadora e assistente interativo.',
+          'Verifique se algum deploy recente precede a falha e inspecione traces/logs com erro filtrados automaticamente.',
+          'Atualize o status (Aberto → Investigando → Mitigado → Resolvido) para alimentar MTTA e MTTR.',
+        ]}
+      />
 
       <section className="card filters" aria-label="Filtros">
         <div className="filter-group">

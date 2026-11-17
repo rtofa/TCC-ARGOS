@@ -5,10 +5,19 @@ import { ROLE_LABEL } from '../format.js'
 import { pageFor, recordVisit, visiblePages } from '../navigation.js'
 import { Icon } from './Icon.jsx'
 import { Logo } from './Logo.jsx'
+import OnboardingTour from './OnboardingTour.jsx'
+import { hasCompletedTour } from '../tour.js'
 
 function NavItem({ page, onNavigate }) {
   return (
-    <NavLink to={page.path} end={page.path === '/'} className="side-item" onClick={onNavigate} title={page.label}>
+    <NavLink
+      to={page.path}
+      end={page.path === '/'}
+      className="side-item"
+      onClick={onNavigate}
+      title={page.label}
+      data-tour={page.tourId}
+    >
       <Icon name={page.icon} size={20} />
       <span className="side-label">{page.label}</span>
     </NavLink>
@@ -52,6 +61,7 @@ export default function Layout() {
   const { pathname } = useLocation()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [pinned, setPinned] = useState(loadPinned)
+  const [tourOpen, setTourOpen] = useState(() => !hasCompletedTour(session?.userId))
   const pages = visiblePages(session)
   const main = pages.filter((page) => !page.section)
   const settings = pages.filter((page) => page.section === 'integrations')
@@ -110,10 +120,20 @@ export default function Layout() {
       </aside>
       <main className="content">
         <div className="content-top">
+          <button
+            type="button"
+            className="btn btn-small tour-trigger"
+            onClick={() => setTourOpen(true)}
+            title="Iniciar tour guiado pelo sistema"
+          >
+            <Icon name="help" size={16} />
+            <span>Tour guiado</span>
+          </button>
           <ThemeToggle />
         </div>
         <Outlet />
       </main>
+      <OnboardingTour open={tourOpen} onClose={() => setTourOpen(false)} />
     </div>
   )
 }

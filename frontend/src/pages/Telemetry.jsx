@@ -6,6 +6,7 @@ import { Loading, ErrorState } from '../components/States.jsx'
 import TraceWaterfall, { LogList } from '../components/TraceWaterfall.jsx'
 import ServiceTopologyGraph from '../components/ServiceTopologyGraph.jsx'
 import RedCharts from '../components/RedCharts.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { formatMs, timeAgo } from '../format.js'
 
 const PERIODS = { '15m': 15, '1h': 60, '6h': 360, '24h': 1440 }
@@ -169,11 +170,11 @@ function LogsTab({ window, service, level, text }) {
 
 function EmptyTelemetry() {
   return (
-    <section className="card">
-      <p className="empty">
-        Nenhuma telemetria no período. Configure o OpenTelemetry Collector para enviar dados com uma{' '}
-        <Link to="/settings/api-keys">chave de API</Link>.
+    <section className="card empty-state" style={{ display: 'flex', flexDirection: 'column', gap: 10, alignItems: 'flex-start' }}>
+      <p className="empty" style={{ margin: 0 }}>
+        Nenhuma telemetria recebida no período. Conecte sua aplicação via OpenTelemetry (OTLP/HTTP) para visualizar topologia, gráficos RED, traces e logs mascarados (LGPD).
       </p>
+      <Link to="/connect" className="btn btn-primary btn-small">Conectar aplicação agora</Link>
     </section>
   )
 }
@@ -211,10 +212,23 @@ export default function Telemetry() {
           <h1>Telemetria</h1>
           <p className="muted">Topologia de microsserviços, métricas RED, traces e logs via OpenTelemetry</p>
         </div>
-        <button type="button" className="btn" onClick={() => update({})}>
-          Atualizar
-        </button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Link to="/connect" className="btn">Conectar app</Link>
+          <button type="button" className="btn" onClick={() => update({})}>
+            Atualizar
+          </button>
+        </div>
       </header>
+
+      <PageGuide
+        id="telemetry"
+        summary="Inspecione em profundidade os sinais enviados pela sua aplicação via OpenTelemetry, já com dados pessoais (CPF, e-mail, cartões e segredos) mascarados na entrada."
+        steps={[
+          'Veja o mapa automático de dependências (causa-raiz em vermelho vs. efeito cascata em âmbar).',
+          'Analise taxa de requisições, % de erros e latência p50/p95/p99 nos gráficos RED com marcadores de deploy.',
+          'Mergulhe em traces individuais (waterfall) e logs correlacionados pelo traceId.',
+        ]}
+      />
 
       <nav className="tabs" aria-label="Sinais">
         {Object.entries(TABS).map(([key, label]) => (

@@ -7,6 +7,7 @@ import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge } from '../components/Badges.jsx'
 import { CodeBlock, CopyButton } from '../components/Code.jsx'
 import AlertSourceDialog from '../components/AlertSourceDialog.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { SEVERITIES, formatDateTime } from '../format.js'
 
 const DEFAULT_FORMAT_EXAMPLE = `{
@@ -276,6 +277,16 @@ export default function AlertSources() {
           </button>
         )}
       </header>
+
+      <PageGuide
+        id="alert-sources"
+        summary="Defina quando o Argos deve abrir incidentes automaticamente — tanto por regras internas sobre telemetria OTLP quanto por alertas recebidos via webhook."
+        steps={[
+          'Configure limites de taxa de erro (%) e latência p95 por serviço no Monitor SLO OTLP.',
+          'Cadastre fontes externas (Grafana, Prometheus, Datadog) usando expressões JSONPath.',
+          'Alertas correlacionados do mesmo serviço são agrupados em um único incidente automaticamente.',
+        ]}
+      />
 
       <OtlpMonitorRulesCard editable={editable} />
 

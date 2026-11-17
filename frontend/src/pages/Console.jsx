@@ -6,8 +6,8 @@ import { useAuth } from '../auth/useAuth.js'
 import { Icon, StatusIcon } from '../components/Icon.jsx'
 import { SeverityBadge } from '../components/Badges.jsx'
 import CommandSearch from '../components/CommandSearch.jsx'
-import IncidentsPerDay from '../components/IncidentsPerDay.jsx'
 import ServiceTopologyGraph from '../components/ServiceTopologyGraph.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { STATUS_LABEL, formatDuration, formatMoney, timeAgo } from '../format.js'
 import { visiblePages } from '../navigation.js'
@@ -22,7 +22,6 @@ const MAX_TILES = 16
 const INFRA_SERVICES = new Set(['otelcol-contrib', 'load-generator', 'flagd', 'flagd-ui', 'telemetry-docs', 'smoke'])
 
 const optional = (promise) => promise.catch(() => null)
-const dayKey = (date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`
 
 async function loadConsole(role) {
   const now = Date.now()
@@ -31,7 +30,7 @@ async function loadConsole(role) {
   chartStart.setDate(chartStart.getDate() - (CHART_DAYS - 1))
   const weekAgo = new Date(now - 7 * DAY_MS).toISOString()
 
-  const [active, recent, deploys, weekDeploys, anyIncident, metrics, telemetryServices, topology, sources, keys] = await Promise.all([
+  const [active, recent, deploys, weekDeploys, anyIncident, metrics, telemetryServices, topology, sources, channels, keys] = await Promise.all([
     api.get(`/incidents${query({ status: ACTIVE, size: 100 })}`),
     api.get(`/incidents${query({ openedFrom: chartStart.toISOString(), size: 100 })}`),
     api.get(`/deploys${query({ size: 50 })}`),
@@ -41,11 +40,11 @@ async function loadConsole(role) {
     optional(api.get('/telemetry/services')),
     optional(api.get('/telemetry/topology')),
     optional(api.get('/alert-sources')),
+    optional(api.get('/notifications/channels')),
     role === 'ADMIN' ? optional(api.get('/api-keys')) : Promise.resolve(null),
   ])
   return {
     now,
-    chartStart: chartStart.getTime(),
     active,
     recent,
     deploys,
@@ -55,37 +54,12 @@ async function loadConsole(role) {
     telemetryServices: (telemetryServices ?? []).filter((s) => !INFRA_SERVICES.has(s.service)),
     topology,
     sources,
+    channels,
     keys,
   }
 }
 
 // --- derived data (pure) ---------------------------------------------------------------------
-
-function dailyCounts(incidents, chartStart, now, deploys = []) {
-  const todayKey = dayKey(new Date(now))
-  const days = Array.from({ length: CHART_DAYS }, (_, i) => {
-    const date = new Date(chartStart)
-    date.setDate(date.getDate() + i)
-    return {
-      key: dayKey(date),
-      short: date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }),
-      long: date.toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' }),
-      today: dayKey(date) === todayKey,
-      count: 0,
-      deploys: [],
-    }
-  })
-  const byKey = new Map(days.map((day) => [day.key, day]))
-  for (const incident of incidents) {
-    const day = byKey.get(dayKey(new Date(incident.openedAt)))
-    if (day) day.count += 1
-  }
-  for (const deploy of deploys) {
-    const day = byKey.get(dayKey(new Date(deploy.deployedAt)))
-    if (day) day.deploys.push(deploy)
-  }
-  return days
-}
 
 /** Services discovered via OpenTelemetry, incidents or deploys; status reflects active incidents and live OTLP errors. */
 function buildServices(active, recent, deploys, telemetryServices = []) {
@@ -173,12 +147,12 @@ function buildChecklist(data, role) {
   return [
     { label: 'Criar sua organização', done: true },
     {
-      label: 'Gerar uma chave de API',
-      done: data.keys ? data.keys.length > 0 : keyInUse,
-      to: role === 'ADMIN' ? '/settings/api-keys' : null,
-      cta: role === 'ADMIN' ? 'Gerar chave' : 'Peça a um administrador',
+      label: 'Conectar aplicação (OpenTelemetry / X-API-Key)',
+      done: data.telemetryServices.length > 0 || (data.keys ? data.keys.length > 0 : keyInUse),
+      to: '/connect',
+      cta: role === 'ADMIN' ? 'Conectar app' : 'Ver guia',
     },
-    { label: 'Conectar uma fonte de alertas', done: Boolean(data.sources?.length), to: '/alert-sources', cta: 'Configurar' },
+    { label: 'Conectar alertas ou notificações (Slack/Discord)', done: Boolean(data.sources?.length || data.channels?.length), to: '/integrations', cta: 'Configurar' },
     { label: 'Registrar o primeiro deploy', done: data.deploys.totalElements > 0, to: '/deploys', cta: 'Ver como' },
     { label: 'Acompanhar o primeiro incidente', done: data.hasIncidents, to: '/incidents', cta: 'Abrir' },
   ]
@@ -188,9 +162,9 @@ const plural = (count, one, many) => `${count} ${count === 1 ? one : many}`
 
 // --- widgets ---------------------------------------------------------------------------------
 
-function Widget({ title, icon, action, className = '', children }) {
+function Widget({ title, icon, action, className = '', tourId, children }) {
   return (
-    <section className={`card widget ${className}`}>
+    <section className={`card widget ${className}`} data-tour={tourId}>
       <header className="widget-header">
         <span className="widget-title">
           <Icon name={icon} size={16} />
@@ -220,6 +194,7 @@ function ServiceMapWidget({ services, topology, className = 'span-8' }) {
       title="Mapa de serviços e topologia (OpenTelemetry ao vivo)"
       icon="service"
       className={className}
+      tourId="service-map"
       action={
         <span className="inline-actions no-margin">
           {hasGraph && (
@@ -310,7 +285,7 @@ function KpiStrip({ data, executive }) {
   const lastDeploy = data.deploys.content[0]
   const loss = executive?.totalLoss
   return (
-    <div className="home-kpis">
+    <div className="home-kpis" data-tour="kpi-strip">
       <KpiTile to="/incidents?status=OPEN&status=INVESTIGATING&status=MITIGATED" label="Incidentes ativos" status={status}
         value={total} hint={total === 0 ? 'Todos os serviços operacionais' : plural(critical, 'crítico (SEV1/SEV2)', 'críticos (SEV1/SEV2)')} />
       <KpiTile to="/dashboards?painel=executivo&dias=7" label="Perda estimada · 24 h"
@@ -491,22 +466,21 @@ export default function Console() {
       {!data && !error && <Loading label="Montando seu console…" />}
       {data && (
         <>
+          <PageGuide
+            id="console-home"
+            summary="Sala de Operação em Tempo Real: mostra a saúde atual dos seus serviços, incidentes abertos agora e causa-raiz investigada automaticamente."
+            actions={
+              <>
+                <Link to="/connect" className="btn btn-small btn-primary">Conectar aplicação</Link>
+                <Link to="/overview" className="btn btn-small">Ver tendências e DORA (Visão geral)</Link>
+              </>
+            }
+          />
           <KpiStrip data={data} executive={executive.data} />
           <div className={`console-grid ${loading ? 'is-refreshing' : ''}`}>
             <ActiveIncidentsWidget items={activeIncidents.data} />
-            <Widget
-              title={`Incidentes abertos por dia · ${CHART_DAYS} dias`}
-              icon="overview"
-              className="span-8"
-              action={<WidgetLink to="/overview">Visão geral</WidgetLink>}
-            >
-              <IncidentsPerDay days={dailyCounts(data.recent.content, data.chartStart, data.now, data.deploys.content)} />
-              {data.recent.totalElements > data.recent.content.length && (
-                <p className="muted small">Mostrando os {data.recent.content.length} incidentes mais recentes do período.</p>
-              )}
-            </Widget>
+            <ServiceMapWidget services={services} topology={data.topology} className="span-8" />
             <ActivityWidget events={buildActivity(data.recent.content, data.deploys.content)} />
-            <ServiceMapWidget services={services} topology={data.topology} className={checklistDone ? 'span-12' : 'span-8'} />
             {!checklistDone && <ChecklistWidget steps={checklist} />}
           </div>
         </>

@@ -5,6 +5,7 @@ import { useApi } from '../hooks/useApi.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { CodeBlock } from '../components/Code.jsx'
 import { CommitLink, EnvironmentBadge } from '../components/DeployList.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { formatDateTime, timeAgo } from '../format.js'
 
 const PERIOD_HOURS = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
@@ -142,10 +143,20 @@ export default function Deploys() {
     <>
       <header className="page-header">
         <div>
-          <h1>Deploys</h1>
+          <h1>Deploys & Quality Gate</h1>
           <p className="muted">O que mudou, onde e quando: a primeira pergunta durante um incidente</p>
         </div>
       </header>
+
+      <PageGuide
+        id="deploys"
+        summary="Rastreie cada publicação do seu CI/CD e proteja a produção com o Quality Gate automático."
+        steps={[
+          'Antes do deploy, seu pipeline consulta /webhooks/deploys/quality-gate (bloqueia com HTTP 409 se houver SEV1 ou alerta crítico).',
+          'Após o deploy, o pipeline registra versão, commit e autor para calcular as métricas DORA.',
+          'Se um incidente abrir logo depois, o Argos sinaliza o deploy suspeito automaticamente.',
+        ]}
+      />
 
       <QualityGateBanner gate={qualityGate.data} />
 

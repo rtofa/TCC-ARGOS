@@ -3,6 +3,7 @@ import { api } from '../api.js'
 import { useApi } from '../hooks/useApi.js'
 import { useAuth, canWrite } from '../auth/useAuth.js'
 import { ErrorState, Loading } from '../components/States.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { formatMoney, formatNumber } from '../format.js'
 
 const EMPTY = { name: '', description: '', unit: '', baselinePerMinute: '', valuePerUnit: '', services: [{ service: '', impactPercent: '100' }] }
@@ -90,6 +91,16 @@ export default function BusinessKpis() {
           <button type="button" className="btn btn-primary" onClick={() => open(null)}>Novo KPI</button>
         )}
       </header>
+
+      <PageGuide
+        id="business-kpis"
+        summary="Traduza indisponibilidade técnica em impacto de negócio (pedidos perdidos e R$ em risco por minuto) ligando KPIs aos seus serviços."
+        steps={[
+          'Cadastre métricas de negócio (ex.: Pedidos/min, valor unitário em R$).',
+          'Associe os microsserviços críticos que sustentam cada KPI e seu peso (%).',
+          'Acompanhe o prejuízo estimado em tempo real dentro de cada incidente e no painel Dashboards.',
+        ]}
+      />
 
       {editing !== null && (
         <form className="card kpi-form" onSubmit={save}>

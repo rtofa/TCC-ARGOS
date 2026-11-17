@@ -6,6 +6,7 @@ import { useAuth, canWrite } from '../auth/useAuth.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge } from '../components/Badges.jsx'
 import { CodeBlock } from '../components/Code.jsx'
+import PageGuide from '../components/PageGuide.jsx'
 import { SEVERITIES, formatDateTime, timeAgo } from '../format.js'
 
 const CHANNEL_TYPES = [
@@ -431,7 +432,18 @@ export default function Integrations() {
           <h1>Catálogo de Integrações</h1>
           <p className="muted">Conecte telemetria OpenTelemetry, alertas, pipelines CI/CD e canais de aviso (Slack, Discord, E-mail)</p>
         </div>
+        <Link to="/connect" className="btn btn-primary">Assistente Conectar App</Link>
       </header>
+
+      <PageGuide
+        id="integrations"
+        summary="Catálogo central de conectores da plataforma: veja o status de cada integração da organização e configure notificações automáticas quando incidentes abrirem."
+        steps={[
+          'Use o assistente Conectar App para plugar sua aplicação com OpenTelemetry em poucos minutos.',
+          'Adicione canais de Slack, Discord ou E-mail abaixo para avisar a equipe em tempo real.',
+          'Clique em Testar para validar a entrega instantaneamente.',
+        ]}
+      />
 
       <nav className="tabs" aria-label="Categorias de integrações">
         {CATEGORIES.map((c) => (

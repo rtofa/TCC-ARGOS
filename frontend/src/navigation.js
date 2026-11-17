@@ -1,17 +1,19 @@
-/** Every page of the console: drives the sidebar, the search and the quick-access widget. */
+/** Every page of the console: drives the sidebar, the search and the onboarding tour. */
 export const PAGES = [
-  { path: '/', label: 'Início', icon: 'home', description: 'Seu console: saúde, atividade e atalhos' },
-  { path: '/overview', label: 'Visão geral', icon: 'overview', description: 'Incidentes por severidade, MTTA e MTTR' },
-  { path: '/incidents', label: 'Incidentes', icon: 'incidents', description: 'Acompanhe, investigue e resolva' },
-  { path: '/deploys', label: 'Deploys', icon: 'deploys', description: 'O que mudou, onde e quando' },
-  { path: '/telemetry', label: 'Telemetria', icon: 'monitor', description: 'Traces, logs e serviços em tempo real' },
-  { path: '/dashboards', label: 'Dashboards', icon: 'overview', description: 'Executivo, operação, entrega e serviços' },
+  { path: '/', label: 'Início', icon: 'home', description: 'Operação em tempo real: serviços, incidentes e atividade agora' },
+  { path: '/overview', label: 'Visão geral', icon: 'overview', description: 'Tendências SRE, métricas DORA e confiabilidade por serviço' },
+  { path: '/incidents', label: 'Incidentes', icon: 'incidents', description: 'Acompanhe, investigue e resolva crises', tourId: 'nav-incidents' },
+  { path: '/deploys', label: 'Deploys', icon: 'deploys', description: 'O que mudou, Quality Gate e histórico' },
+  { path: '/telemetry', label: 'Telemetria', icon: 'monitor', description: 'Topologia, gráficos RED, traces e logs', tourId: 'nav-telemetry' },
+  { path: '/dashboards', label: 'Dashboards', icon: 'kpi', description: 'Impacto financeiro e visão executiva' },
+  { path: '/connect', label: 'Conectar App', icon: 'connect', description: 'Configure e valide sua aplicação via OpenTelemetry', tourId: 'nav-connect' },
   {
     path: '/integrations',
     label: 'Integrações',
     icon: 'plug',
     description: 'Catálogo de conectores e avisos (Slack, Discord, E-mail)',
     section: 'integrations',
+    tourId: 'nav-integrations',
   },
   {
     path: '/settings/business',
@@ -24,7 +26,7 @@ export const PAGES = [
     path: '/alert-sources',
     label: 'Fontes de alerta',
     icon: 'alerts',
-    description: 'Receba alertas de qualquer ferramenta',
+    description: 'Receba alertas de qualquer ferramenta e regras SLO',
     section: 'integrations',
   },
   {
@@ -34,6 +36,15 @@ export const PAGES = [
     description: 'Credenciais para ferramentas externas',
     section: 'integrations',
     adminOnly: true,
+  },
+  {
+    path: '/settings/users',
+    label: 'Usuários',
+    icon: 'users',
+    description: 'Gerencie membros e papéis da organização',
+    section: 'integrations',
+    adminOnly: true,
+    tourId: 'nav-users',
   },
 ]
 
