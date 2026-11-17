@@ -44,7 +44,8 @@ class MultiTenantIsolationIT extends AbstractIntegrationTest {
             "telemetry_spans",
             "telemetry_logs",
             "telemetry_metrics",
-            "telemetry_rules"
+            "telemetry_rules",
+            "notification_channels"
     );
 
     private static final String TRACE_B = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
