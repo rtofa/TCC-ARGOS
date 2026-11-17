@@ -118,6 +118,10 @@ public class IncidentEvent {
                 from.name(), IncidentStatus.RESOLVED.name(), null);
     }
 
+    public static IncidentEvent systemComment(Incident incident, UUID apiKeyId, Instant at, String body) {
+        return new IncidentEvent(incident, EventType.COMMENT, null, apiKeyId, at, null, null, body);
+    }
+
     public static IncidentEvent comment(Incident incident, UUID actorId, Instant at, String body) {
         return new IncidentEvent(incident, EventType.COMMENT, actorId, at, null, null, body);
     }

@@ -194,6 +194,28 @@ public class Incident implements Persistable<UUID> {
         return List.of(IncidentEvent.severityChangedByAlert(this, apiKeyId, now, previous, newSeverity));
     }
 
+    /** Escala a severidade apenas se o alerta agrupado for mais grave que a severidade atual do incidente. */
+    public List<IncidentEvent> escalateSeverityByAlert(Severity candidate, UUID apiKeyId, Instant now) {
+        if (candidate == null || candidate.ordinal() >= severity.ordinal()) {
+            return List.of();
+        }
+        return changeSeverityByAlert(candidate, apiKeyId, now);
+    }
+
+    /** Anexa novos serviços afetados trazidos por alertas agrupados ao mesmo incidente (MON-09). */
+    public void mergeAffectedServices(List<String> additionalServices, Instant now) {
+        if (additionalServices == null || additionalServices.isEmpty()) {
+            return;
+        }
+        List<String> combined = new ArrayList<>(affectedServices);
+        combined.addAll(additionalServices);
+        List<String> normalized = normalizeServices(combined);
+        if (!normalized.equals(affectedServices)) {
+            affectedServices = normalized;
+            updatedAt = now;
+        }
+    }
+
     public List<IncidentEvent> changeSeverity(Severity newSeverity, UUID actorId, Instant now) {
         if (newSeverity == null || newSeverity == severity) {
             return List.of();

@@ -15,10 +15,12 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import java.time.Clock;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -26,6 +28,7 @@ import java.util.UUID;
 @Service
 public class AlertProcessor {
 
+    static final Duration GROUPING_WINDOW = Duration.ofMinutes(30);
     private static final Logger log = LoggerFactory.getLogger(AlertProcessor.class);
 
     private final AutomatedIncidents automatedIncidents;
@@ -80,8 +83,14 @@ public class AlertProcessor {
                 return AlertResult.of(alert.index(), alert.dedupKey(), AlertAction.IGNORED, null);
             }
             UUID incidentId = link.get().getIncidentId();
-            boolean resolved = automatedIncidents.resolveFromAlert(organizationId, incidentId, key.keyId());
             link.get().close(now);
+            linkRepository.saveAndFlush(link.get());
+            if (linkRepository.countByOrganizationIdAndIncidentIdAndClosedAtIsNull(organizationId, incidentId) > 0) {
+                automatedIncidents.recordPartialAlertRecovery(organizationId, incidentId, key.keyId(),
+                        alert.dedupKey(), sourceName);
+                return AlertResult.of(alert.index(), alert.dedupKey(), AlertAction.UPDATED, incidentId);
+            }
+            boolean resolved = automatedIncidents.resolveFromAlert(organizationId, incidentId, key.keyId());
             return AlertResult.of(alert.index(), alert.dedupKey(),
                     resolved ? AlertAction.RESOLVED : AlertAction.IGNORED, incidentId);
         }
@@ -99,9 +108,36 @@ public class AlertProcessor {
             linkRepository.saveAndFlush(link.get());
         }
 
+        // MON-09: Tenta agrupar alertas distintos que afetam o(s) mesmo(s) serviço(s) em um incidente ativo recente.
+        Optional<UUID> groupedIncident = tryGroupIntoExistingIncident(organizationId, alert.services(), now);
+        if (groupedIncident.isPresent()) {
+            UUID incidentId = groupedIncident.get();
+            automatedIncidents.attachGroupedAlert(organizationId, incidentId, key.keyId(), alert.severity(),
+                    alert.services(), alert.dedupKey(), sourceName);
+            linkRepository.save(AlertIncidentLink.open(organizationId, sourceId, alert.dedupKey(), incidentId, now));
+            return AlertResult.of(alert.index(), alert.dedupKey(), AlertAction.GROUPED, incidentId);
+        }
+
         UUID incidentId = automatedIncidents.openFromAlert(organizationId, key.keyId(), alert.title(),
                 alert.description(), alert.severity(), alert.services(), alert.dedupKey(), sourceName);
         linkRepository.save(AlertIncidentLink.open(organizationId, sourceId, alert.dedupKey(), incidentId, now));
         return AlertResult.of(alert.index(), alert.dedupKey(), AlertAction.OPENED, incidentId);
+    }
+
+    private Optional<UUID> tryGroupIntoExistingIncident(UUID organizationId, List<String> services, Instant now) {
+        if (services == null || services.isEmpty()) {
+            return Optional.empty();
+        }
+        String primaryService = services.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .map(s -> s.trim().toLowerCase(Locale.ROOT))
+                .sorted()
+                .findFirst()
+                .orElse(null);
+        if (primaryService == null) {
+            return Optional.empty();
+        }
+        linkRepository.lockDedupKey(organizationId + ":service-group:" + primaryService);
+        return automatedIncidents.findActiveAlertIncidentForServices(organizationId, services, now.minus(GROUPING_WINDOW));
     }
 }

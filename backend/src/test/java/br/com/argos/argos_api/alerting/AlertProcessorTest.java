@@ -213,4 +213,21 @@ class AlertProcessorTest {
 
         verify(linkRepository).lockDedupKey(ORG + ":" + source + ":cpu");
     }
+
+    @Test
+    void groupsAlertIntoActiveIncidentForSameServiceWhenDedupKeyIsNew() {
+        when(linkRepository.findOpen(ORG, null, "mem-checkout")).thenReturn(Optional.empty());
+        when(automatedIncidents.findActiveAlertIncidentForServices(eq(ORG), eq(List.of("checkout-api")), any()))
+                .thenReturn(Optional.of(INCIDENT));
+
+        MappedAlert memoryAlert = new MappedAlert(0, "Memoria alta", "mem-checkout", AlertStatus.FIRING, "SEV1",
+                List.of("checkout-api"), null, null);
+        AlertResult result = processOne(memoryAlert);
+
+        assertThat(result.action()).isEqualTo(AlertAction.GROUPED);
+        assertThat(result.incidentId()).isEqualTo(INCIDENT);
+        verify(automatedIncidents).attachGroupedAlert(ORG, INCIDENT, KEY.keyId(), "SEV1",
+                List.of("checkout-api"), "mem-checkout", SOURCE_NAME);
+        verify(automatedIncidents, never()).openFromAlert(any(), any(), any(), any(), any(), any(), any(), any());
+    }
 }

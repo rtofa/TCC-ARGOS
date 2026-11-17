@@ -4,6 +4,7 @@ import br.com.argos.argos_api.incident.domain.Incident;
 import br.com.argos.argos_api.incident.domain.IncidentEvent;
 import br.com.argos.argos_api.incident.domain.IncidentEventRepository;
 import br.com.argos.argos_api.incident.domain.IncidentRepository;
+import br.com.argos.argos_api.incident.domain.IncidentSource;
 import br.com.argos.argos_api.incident.domain.IncidentStatus;
 import br.com.argos.argos_api.incident.domain.Severity;
 import org.springframework.stereotype.Service;
@@ -13,7 +14,11 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 /**
  * Public API for modules that manage incidents on behalf of the system (e.g. alerting).
@@ -45,6 +50,66 @@ public class AutomatedIncidents {
                 Severity.valueOf(severity), services, now));
         eventRepository.save(IncidentEvent.alertTriggered(incident, apiKeyId, now, dedupKey, sourceName));
         return incident.getId();
+    }
+
+    /**
+     * MON-09: Procura um incidente ativo aberto por alerta que compartilhe ao menos um serviço
+     * dentro da janela de agrupamento especificada.
+     */
+    @Transactional(readOnly = true)
+    public Optional<UUID> findActiveAlertIncidentForServices(UUID organizationId, List<String> services, Instant since) {
+        if (services == null || services.isEmpty()) {
+            return Optional.empty();
+        }
+        Set<String> target = services.stream()
+                .filter(s -> s != null && !s.isBlank())
+                .map(s -> s.trim().toLowerCase(Locale.ROOT))
+                .collect(Collectors.toSet());
+        if (target.isEmpty()) {
+            return Optional.empty();
+        }
+        return incidentRepository
+                .findByOrganizationIdAndSourceAndStatusNotAndUpdatedAtGreaterThanEqualOrderByOpenedAtDesc(
+                        organizationId, IncidentSource.ALERT, IncidentStatus.RESOLVED, since)
+                .stream()
+                .filter(inc -> inc.getAffectedServices().stream()
+                        .anyMatch(s -> target.contains(s.trim().toLowerCase(Locale.ROOT))))
+                .map(Incident::getId)
+                .findFirst();
+    }
+
+    /**
+     * MON-09: Agrupa um alerta relacionado em um incidente ativo existente, mesclando serviços afetados,
+     * escalando a severidade se o novo alerta for mais grave e registrando o evento na timeline.
+     */
+    @Transactional
+    public void attachGroupedAlert(UUID organizationId, UUID incidentId, UUID apiKeyId, String severity,
+                                   List<String> services, String dedupKey, String sourceName) {
+        Instant now = now();
+        Severity candidate = Severity.valueOf(severity);
+        incidentRepository.findByIdAndOrganizationId(incidentId, organizationId).ifPresent(incident -> {
+            incident.mergeAffectedServices(services, now);
+            incident.touch(now);
+            eventRepository.save(IncidentEvent.alertTriggered(incident, apiKeyId, now, dedupKey, sourceName));
+            List<IncidentEvent> severityEvents = incident.escalateSeverityByAlert(candidate, apiKeyId, now);
+            if (!severityEvents.isEmpty()) {
+                eventRepository.saveAll(severityEvents);
+            }
+        });
+    }
+
+    /**
+     * MON-09: Registra na timeline que um dos alertas agrupados normalizou enquanto outros permanecem disparados.
+     */
+    @Transactional
+    public void recordPartialAlertRecovery(UUID organizationId, UUID incidentId, UUID apiKeyId,
+                                           String dedupKey, String sourceName) {
+        Instant now = now();
+        incidentRepository.findByIdAndOrganizationId(incidentId, organizationId).ifPresent(incident -> {
+            incident.touch(now);
+            eventRepository.save(IncidentEvent.systemComment(incident, apiKeyId, now,
+                    "Alerta '" + dedupKey + "' (" + sourceName + ") normalizado; incidente mantido aberto por haver outros alertas ativos."));
+        });
     }
 
     /** An incident that does not exist in the organization is treated as resolved. */

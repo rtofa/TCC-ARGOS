@@ -49,10 +49,18 @@ const relativeToOpening = (openedAt) => (deploy) => {
 
 function AlertsCard({ alerts }) {
   if (!alerts.data?.length) return null
+  const grouped = alerts.data.length > 1
   return (
     <section className="card">
-      <h2>Alertas recebidos</h2>
-      <ul className="alert-list">
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+        <h2 style={{ marginBottom: 0 }}>Alertas recebidos</h2>
+        {grouped && (
+          <span className="chip" title="Alertas relacionados ao mesmo serviço agrupados neste incidente (MON-09)">
+            {alerts.data.length} alertas agrupados
+          </span>
+        )}
+      </div>
+      <ul className="alert-list" style={{ marginTop: 12 }}>
         {alerts.data.map((alert) => (
           <li key={`${alert.sourceId}-${alert.dedupKey}-${alert.firstSeenAt}`}>
             <p>

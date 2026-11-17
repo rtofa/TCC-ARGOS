@@ -25,6 +25,8 @@ public interface AlertIncidentLinkRepository extends JpaRepository<AlertIncident
 
     List<AlertIncidentLink> findByIncidentIdAndOrganizationIdOrderByFirstSeenAt(UUID incidentId, UUID organizationId);
 
+    long countByOrganizationIdAndIncidentIdAndClosedAtIsNull(UUID organizationId, UUID incidentId);
+
    
     @Query(value = "SELECT count(*) FROM (SELECT pg_advisory_xact_lock(hashtextextended(:lockKey, 0))) AS l",
             nativeQuery = true)

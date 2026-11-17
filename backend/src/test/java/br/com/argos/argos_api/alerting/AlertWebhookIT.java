@@ -238,4 +238,44 @@ class AlertWebhookIT extends AbstractIntegrationTest {
                 .andExpect(status().isUnauthorized());
         assertThat(incidentCount(orgA)).isZero();
     }
+
+    @Test
+    void groupsRelatedAlertsForSameServiceIntoASingleIncidentAndResolvesWhenAllClear() throws Exception {
+        // 1. Primeiro alerta (SEV3) abre o incidente no checkout-api
+        String latencyAlert = """
+                {"title":"Latencia p95 alta no checkout-api","dedupKey":"latency-checkout",
+                 "status":"firing","severity":"warning","service":"checkout-api"}
+                """;
+        String incidentId = sendAndGetIncident(keyA, latencyAlert, "OPENED");
+
+        // 2. Segundo alerta distinto (SEV1) no mesmo servico deve ser AGRUPADO ao mesmo incidente e escalar severidade
+        String cpuGrouped = sendAndGetIncident(keyA, CPU_FIRING, "GROUPED");
+        assertThat(cpuGrouped).isEqualTo(incidentId);
+        assertThat(incidentCount(orgA)).isEqualTo(1);
+
+        // 3. Incidente agora tem 2 links abertos e severidade escalada para SEV1
+        mockMvc.perform(get("/api/incidents/{id}", incidentId).with(asAdminA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.severity").value("SEV1"))
+                .andExpect(jsonPath("$.status").value("OPEN"));
+
+        mockMvc.perform(get("/api/incidents/{id}/alerts", incidentId).with(asAdminA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$", hasSize(2)))
+                .andExpect(jsonPath("$[*].dedupKey", contains("latency-checkout", "cpu-checkout")));
+
+        // 4. Resolver apenas o alerta de CPU mantem o incidente OPEN porque latency-checkout continua disparado
+        String afterPartialResolve = sendAndGetIncident(keyA, CPU_RESOLVED, "UPDATED");
+        assertThat(afterPartialResolve).isEqualTo(incidentId);
+        mockMvc.perform(get("/api/incidents/{id}", incidentId).with(asAdminA()))
+                .andExpect(jsonPath("$.status").value("OPEN"));
+
+        // 5. Resolver o ultimo alerta fecha o incidente automaticamente
+        String latencyResolved = """
+                {"title":"Latencia p95 alta no checkout-api","dedupKey":"latency-checkout","status":"resolved"}
+                """;
+        assertThat(sendAndGetIncident(keyA, latencyResolved, "RESOLVED")).isEqualTo(incidentId);
+        mockMvc.perform(get("/api/incidents/{id}", incidentId).with(asAdminA()))
+                .andExpect(jsonPath("$.status").value("RESOLVED"));
+    }
 }

@@ -14,6 +14,9 @@ public interface IncidentRepository extends JpaRepository<Incident, UUID>, JpaSp
 
     Optional<Incident> findByIdAndOrganizationId(UUID id, UUID organizationId);
 
+    List<Incident> findByOrganizationIdAndSourceAndStatusNotAndUpdatedAtGreaterThanEqualOrderByOpenedAtDesc(
+            UUID organizationId, IncidentSource source, IncidentStatus status, Instant since);
+
     @Query("""
             SELECT i FROM Incident i
             WHERE i.organizationId = :organizationId
