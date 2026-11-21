@@ -16,13 +16,24 @@ Pré-requisitos: **Docker** (com Docker Compose) e **Git**.
 docker compose up --build -d
 ```
 
-Esse comando sobe o PostgreSQL 15, o backend Spring Boot, o console React (servido por Nginx) e executa o *seed* idempotente que cria a organização de demonstração, o usuário administrador e a chave de API do OpenTelemetry Collector em `demo/generated/argos.env`.
+Esse comando sobe o PostgreSQL 15 com pgvector (também base de conhecimento do agente de suporte), o backend Spring Boot, o console React (servido por Nginx) e executa o *seed* idempotente que cria a organização de demonstração, o usuário administrador e a chave de API do OpenTelemetry Collector em `demo/generated/argos.env`.
 
 | Serviço | Endereço | Credenciais de demonstração |
 |---|---|---|
 | **Console do Argos** | http://localhost:3030 | `admin@demo.argos` / `Argos@2026!` |
 | **API do Argos** | http://localhost:8081 | JWT (console) ou `X-API-Key` (webhooks/OTLP) |
-| **PostgreSQL** | `localhost:5434` (`argos`) | `postgres` / `postgres` |
+| **PostgreSQL + pgvector** | `localhost:5434` (`argos`) | `postgres` / `postgres` |
+
+### Lia, a assistente de suporte (RAG)
+
+A **Lia**, assistente de suporte (balão com ponto de interrogação no canto inferior direito de todas as telas), responde dúvidas sobre o Argos com base na documentação oficial (22 documentos em `backend/src/main/resources/knowledge-base/` ou na pasta indicada em `ARGOS_HELPDESK_KB_LOCATION`). Tudo é configurado por variáveis de ambiente, que podem ficar em `backend/.env` (fora do Git):
+
+| Variável | Para quê |
+|---|---|
+| `ARGOS_LLM_PRIMARY_PROVIDER`, `_BASE_URL`, `_MODEL`, `_API_KEY` | Modelo principal (`openai` = qualquer API compatível com OpenAI, ou `anthropic`) |
+| `ARGOS_LLM_FALLBACK1_*`, `ARGOS_LLM_FALLBACK2_*`, `ARGOS_LLM_FALLBACK3_*` | Fallbacks, usados em falha de API, indisponibilidade ou timeout |
+| `OPENAI_API_KEY` | Embeddings `text-embedding-3-small` (lado vetorial da busca híbrida); sem ela, só busca textual |
+| `COHERE_API_KEY` | Rerank (Cohere Rerank); sem ela, vale a ordem da fusão |
 
 ---
 
@@ -79,7 +90,7 @@ Veja mais detalhes em [`demo/README.md`](demo/README.md).
 
 > 📖 **Documentação Técnica Completa**: Para um guia detalhado sobre o funcionamento interno, diagramas de fluxo, explicação de cada ferramenta (OpenTelemetry, Spring Modulith, PostgreSQL RLS, Quality Gate, DORA, RED) e mapeamento de telas, consulte [`docs/ARQUITETURA_E_MANUAL_DO_SISTEMA.md`](docs/ARQUITETURA_E_MANUAL_DO_SISTEMA.md).
 
-- **Backend (`backend/`)**: Java 17, Spring Boot 4.1.1, Spring Modulith 2.1.1, Spring Data JPA + JDBC em lote, Flyway, Spring Security (OAuth2 Resource Server com JWT para usuários e filtro `X-API-Key` para ingestão em `/api/webhooks/**`).
+- **Backend (`backend/`)**: Java 21 (virtual threads), Spring Boot 4.1.2, Spring Modulith 2.1.1, Spring Data JPA + JDBC em lote, Flyway, Spring Security (OAuth2 Resource Server com JWT para usuários e filtro `X-API-Key` para ingestão em `/api/webhooks/**`).
   - Módulos verificados por `ModularityTests`:
     - `identity`: organizações, usuários, autenticação JWT e papéis (`ADMIN`, `EDITOR`, `VIEWER`, `EXECUTIVE`).
     - `incident`: ciclo de vida de incidentes, linha do tempo, comentários e métricas operacionais (MTTA/MTTR).
@@ -87,13 +98,16 @@ Veja mais detalhes em [`demo/README.md`](demo/README.md).
     - `alerting`: fontes de alerta configuráveis com JSONPath e webhook com deduplicação por `dedupKey`.
     - `delivery`: webhook de registro de deploys por pipelines de CI/CD e correlação com incidentes.
     - `telemetry`: receptor OTLP/HTTP JSON (`/api/webhooks/otlp/v1/{traces,logs,metrics}`) e API de consulta (`/api/telemetry/**`).
-    - `shared`: contexto multi-tenant (`TenantFilter`, `TenantContext`, `TenantAspect`), usuário autenticado e relógio.
+    - `ai`: camada de modelos com LangChain4j (modelo principal + fallbacks entre provedores, embeddings e rerank, com retry/backoff e circuit breaker).
+    - `helpdesk`: agente de suporte com Advanced RAG (chunking parent-child, busca híbrida textual + vetorial no PostgreSQL/pgvector com RRF, rerank, guardrails, streaming SSE e tracing).
+    - `shared`: contexto multi-tenant (`TenantFilter`, `TenantContext`, `TenantAspect`), usuário autenticado, relógio e resiliência (retry com backoff e circuit breaker).
 - **Frontend (`frontend/`)**: React 19.2, React Router 7, Vite 8.
 
 ## Executando os testes
 
 ```bash
-# Backend (testes unitários, modularidade e integração com PostgreSQL via Testcontainers)
+# Backend (testes unitários, modularidade e integração com PostgreSQL + pgvector via Testcontainers)
+# Avaliação das respostas com os modelos reais (opcional): ARGOS_LIVE_EVAL=true ./mvnw test -Dtest=HelpdeskLiveEvaluationIT
 cd backend && ./mvnw verify
 
 # Frontend (lint e build de produção)

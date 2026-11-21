@@ -155,7 +155,7 @@ flowchart LR
 
 ## 4. Arquitetura Interna do Backend (Módulos Spring Modulith)
 
-O backend (`backend/src/main/java/br/com/argos/argos_api/`) é dividido em 7 módulos:
+O backend (`backend/src/main/java/br/com/argos/argos_api/`) é dividido em módulos Spring Modulith, entre eles:
 
 | Módulo | Responsabilidade Principal | Principais Classes / Endpoints |
 |---|---|---|
@@ -166,6 +166,8 @@ O backend (`backend/src/main/java/br/com/argos/argos_api/`) é dividido em 7 mó
 | **`alerting`** | Cadastro de fontes de alerta com extração dinâmica via **JSONPath** e deduplicação automática por `dedupKey` | `AlertSourceController` (`/api/alert-sources`), `AlertWebhookController` (`/api/webhooks/alerts/{id}`), `AlertProcessor` |
 | **`delivery`** | Registro de deploys via CI/CD, cálculo das 4 **Métricas DORA**, correlação deploy-incidente e **Quality Gate** | `DeployController`, `DeployWebhookController`, `DoraMetricsController` (`/api/metrics/dora`), `QualityGateService` |
 | **`telemetry`** | Ingestão OTLP/HTTP (traces, logs, métricas), consultas de traces/logs/séries, **Mapa de Topologia**, **Métricas RED** e **Monitor SLO (`@Scheduled`)** | `OtlpController` (`/api/webhooks/otlp/v1/*`), `TelemetryController` (`/api/telemetry/*`), `TelemetryQueryService`, `TelemetryMonitor` |
+| **`ai`** | Camada de modelos com LangChain4j: modelo principal + fallbacks entre provedores (com streaming), embeddings (OpenAI `text-embedding-3-small`) e rerank (Cohere), com retry/backoff e circuit breaker | `LlmRouter`, `AiConfiguration`, `ResilientEmbeddingModel`, `ResilientScoringModel` |
+| **`helpdesk`** | Agente de suporte com **Advanced RAG** sobre a documentação oficial: chunking parent-child, busca híbrida no PostgreSQL com pgvector (textual + vetorial fundidas com RRF pelo LangChain4j), rerank, guardrails de entrada/saída, streaming (SSE) e tracing | `HelpdeskController` (`/api/support/*`), `SupportAgent`, `HybridRetriever`, `MarkdownChunker`, `KnowledgeBaseIngestor` |
 
 ---
 
@@ -249,6 +251,14 @@ Para reproduzir cenários reais de produção, a pasta `demo/` automatiza a cone
 
 ---
 
+### 6.6 Fluxo do Agente de Suporte (RAG)
+1. **Indexação**: na subida da aplicação (e em `POST /api/support/knowledge/reindex`), os documentos Markdown de `backend/src/main/resources/knowledge-base/` (ou de `ARGOS_HELPDESK_KB_LOCATION`) são divididos respeitando títulos e hierarquia: cada seção `##` vira um **pai** e seus parágrafos viram **filhos** contextualizados com "Documento > Seção". Os filhos recebem embeddings e vão para a tabela pgvector `helpdesk_chunks` (criada pelo LangChain4j); os pais ficam em `helpdesk_parents`, com índice de busca textual. Só documentos novos ou alterados são reprocessados.
+2. **Pergunta** (`POST /api/support/ask/stream`): guardrail de entrada (prompt injection, LGPD) → entendimento da pergunta (escopo, reescrita de follow-ups, reformulações) → busca híbrida para cada reformulação, em paralelo (virtual threads): uma única consulta SQL ordena os trechos por similaridade vetorial (pgvector) e por relevância textual (dicionário `portuguese`, `ts_rank`) e funde as duas listas com RRF → fusão entre reformulações → rerank (Cohere) ou filtro de relevância → expansão para as seções pai.
+3. **Resposta**: o modelo principal escreve em streaming citando os trechos `[n]`; se ele falhar, o próximo provedor assume. O guardrail de saída confere citações, aderência e fatos (números, endpoints, cabeçalhos); sem base, a resposta vira "Não encontrei essa informação na documentação do Argos.".
+4. **Degradação**: sem chave de embeddings (ou sem a extensão pgvector) a busca é só textual, sobre as seções; sem rerank, a ordem da fusão; sem modelo de linguagem, o agente devolve os trechos relevantes.
+
+---
+
 ## 7. Estrutura do Frontend e Mapeamento de Telas
 
 A interface em React (`frontend/src/`) é organizada nas seguintes páginas principais (`App.jsx`):
@@ -274,7 +284,7 @@ A interface em React (`frontend/src/`) é organizada nas seguintes páginas prin
 |---|---|---|
 | **Frontend (Nginx + React)** | `3030` (`ARGOS_UI_PORT`) | Interface Web e proxy `/api/` → `backend:8081` |
 | **Backend (Spring Boot)** | `8081` | API REST, Webhooks, OTLP Receiver, Monitor SLO |
-| **PostgreSQL 15** | `5434` (interna `5432`) | Banco de dados relacional + armazenamento de telemetria + RLS |
+| **PostgreSQL 15 + pgvector** | `5434` (interna `5432`) | Banco de dados relacional + armazenamento de telemetria + RLS + base de conhecimento do agente de suporte (vetores e busca textual) |
 | **Seed (`alpine:3.20`)** | — | Container efêmero que executa `demo/seed.sh` para criar organização demo, usuário admin e gerar a API Key em `demo/generated/argos.env` |
 
 ### Comandos de Inicialização

@@ -3,7 +3,8 @@
 # A aplicacao de demonstracao (microsservicos) sobe separada: veja demo/README.md.
 services:
   postgres:
-    image: postgres:15
+    # PostgreSQL 15 com a extensao pgvector (base de conhecimento do agente de suporte: busca hibrida).
+    image: pgvector/pgvector:pg15-trixie
     environment:
       POSTGRES_DB: argos
       POSTGRES_USER: postgres
@@ -23,6 +24,10 @@ services:
     environment:
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/argos
       SPRING_JPA_SHOW_SQL: "false"
+    # Modelos (ARGOS_LLM_*), embeddings (OPENAI_API_KEY) e rerank (COHERE_API_KEY) vem do arquivo .env.
+    env_file:
+      - path: ./backend/.env
+        required: false
     ports:
       - "8081:8081"
     depends_on:

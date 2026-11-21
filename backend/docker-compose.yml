@@ -1,6 +1,7 @@
 services:
   postgres:
-    image: postgres:15
+    # PostgreSQL 15 with the pgvector extension (knowledge base of the support agent: hybrid search).
+    image: pgvector/pgvector:pg15-trixie
     environment:
       POSTGRES_DB: argos
       POSTGRES_USER: postgres
