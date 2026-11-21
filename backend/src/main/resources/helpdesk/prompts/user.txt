@@ -1,0 +1,5 @@
+<documentos>
+{{documents}}
+</documentos>
+
+Pergunta do usuário: {{question}}

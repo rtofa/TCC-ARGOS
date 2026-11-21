@@ -16,11 +16,8 @@ import java.util.UUID;
  * Base for integration tests: real PostgreSQL (Testcontainers) with the Flyway migrations,
  * organization A with one user per role and organization B with an admin.
  */
-@SpringBootTest(properties = {
-        // No real LLM calls in tests (heuristic mode), no automatic investigations behind the tests' back,
-        // and a fast queue poller for the AI integration tests.
-        "argos.ai.llm-enabled=false", "argos.ai.auto-investigate=false",
-        "argos.ai.poll-initial-delay-ms=200", "argos.ai.poll-interval-ms=200"})
+// Never call a real model in tests; the support agent's knowledge base is only indexed by the tests that need it.
+@SpringBootTest(properties = {"argos.ai.llm-enabled=false", "argos.helpdesk.knowledge-base.ingest-on-startup=false"})
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 public abstract class AbstractIntegrationTest {
