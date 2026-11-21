@@ -4,6 +4,7 @@ import { useAuth } from '../auth/useAuth.js'
 import { ROLE_LABEL } from '../format.js'
 import { pageFor, recordVisit, visiblePages } from '../navigation.js'
 import { Icon } from './Icon.jsx'
+import HelpAssistant from './HelpAssistant.jsx'
 import { Logo } from './Logo.jsx'
 import OnboardingTour from './OnboardingTour.jsx'
 import { hasCompletedTour } from '../tour.js'
@@ -134,6 +135,7 @@ export default function Layout() {
         <Outlet />
       </main>
       <OnboardingTour open={tourOpen} onClose={() => setTourOpen(false)} />
+      <HelpAssistant isAdmin={session.role === 'ADMIN'} />
     </div>
   )
 }

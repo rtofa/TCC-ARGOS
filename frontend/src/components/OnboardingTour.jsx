@@ -33,7 +33,7 @@ function buildSteps(role) {
       route: '/',
       selector: '[data-tour="nav-incidents"]',
       title: '5. Incidentes, Alertas Agrupados e IA',
-      body: 'Quando erros ou regras SLO disparam, alertas do mesmo serviço são agrupados em um único incidente. Na sala do incidente, você vê o deploy suspeito, evidências de telemetria e um investigador por IA com assistente interativo.',
+      body: 'Quando erros ou regras SLO disparam, alertas do mesmo serviço são agrupados em um único incidente. Na sala do incidente, você vê o deploy suspeito, as evidências de telemetria e o impacto financeiro estimado.',
     },
     {
       route: '/',

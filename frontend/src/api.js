@@ -48,14 +48,63 @@ async function request(method, path, body) {
 
   const data = parseJson(await response.text())
   if (response.ok) return data
+  throw failure(response.status, path, data)
+}
 
+function failure(status, path, data) {
   // On /auth/* a 401 means rejected credentials, not an expired session.
-  if (response.status === 401 && !path.startsWith('/auth/')) {
+  if (status === 401 && !path.startsWith('/auth/')) {
     unauthorizedListener()
-    throw new ApiError(401, 'Sua sessão expirou. Entre novamente.')
+    return new ApiError(401, 'Sua sessão expirou. Entre novamente.')
   }
-  if (response.status === 403) throw new ApiError(403, 'Você não tem permissão para esta ação.')
-  throw new ApiError(response.status, data?.detail || 'Algo deu errado. Tente novamente.')
+  if (status === 403) return new ApiError(403, 'Você não tem permissão para esta ação.')
+  return new ApiError(status, data?.detail || 'Algo deu errado. Tente novamente.')
+}
+
+/** One "event:/data:" block of a server-sent events stream. */
+function parseEvent(block) {
+  let name = 'message'
+  const data = []
+  for (const line of block.split(/\r?\n/)) {
+    if (line.startsWith('event:')) name = line.slice(6).trim()
+    else if (line.startsWith('data:')) data.push(line.slice(5).replace(/^ /, ''))
+  }
+  return data.length ? { name, data: parseJson(data.join('\n')) } : null
+}
+
+/**
+ * POSTs `body` and reads the response as server-sent events, calling `onEvent(name, data)` for each one as it
+ * arrives. EventSource cannot send the Authorization header, hence fetch + a stream reader.
+ */
+async function stream(path, body, onEvent, { signal } = {}) {
+  const headers = { 'Content-Type': 'application/json', Accept: 'text/event-stream' }
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let response
+  try {
+    response = await fetch(`/api${path}`, { method: 'POST', headers, body: JSON.stringify(body), signal })
+  } catch (error) {
+    if (error.name === 'AbortError') throw error
+    throw new ApiError(0, 'Sem conexão com o servidor')
+  }
+  if (!response.ok) throw failure(response.status, path, parseJson(await response.text()))
+
+  const reader = response.body.getReader()
+  const decoder = new TextDecoder()
+  let buffer = ''
+  for (;;) {
+    const { value, done } = await reader.read()
+    if (done) break
+    buffer += decoder.decode(value, { stream: true })
+    let match
+    while ((match = /\r?\n\r?\n/.exec(buffer))) {
+      const event = parseEvent(buffer.slice(0, match.index))
+      buffer = buffer.slice(match.index + match[0].length)
+      if (event) onEvent(event.name, event.data)
+    }
+  }
+  const last = parseEvent(buffer)
+  if (last) onEvent(last.name, last.data)
 }
 
 export const api = {
@@ -64,6 +113,7 @@ export const api = {
   patch: (path, body) => request('PATCH', path, body),
   put: (path, body) => request('PUT', path, body),
   delete: (path) => request('DELETE', path),
+  stream,
 }
 
 /** Base URL external systems should call; in development it is the Vite server, which proxies /api. */

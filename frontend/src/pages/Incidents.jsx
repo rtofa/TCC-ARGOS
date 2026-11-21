@@ -70,7 +70,7 @@ export default function Incidents() {
         id="incidents"
         summary="Central de gestão de crises: incidentes são abertos manualmente, por webhooks de alerta (agrupados por serviço) ou pelo monitor automático de SLO OTLP."
         steps={[
-          'Clique em um incidente para abrir a Sala de Guerra com IA investigadora e assistente interativo.',
+          'Clique em um incidente para abrir a Sala de Guerra com linha do tempo, deploys relacionados e impacto financeiro.',
           'Verifique se algum deploy recente precede a falha e inspecione traces/logs com erro filtrados automaticamente.',
           'Atualize o status (Aberto → Investigando → Mitigado → Resolvido) para alimentar MTTA e MTTR.',
         ]}

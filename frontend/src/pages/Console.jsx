@@ -237,8 +237,6 @@ function ServiceMapWidget({ services, topology, className = 'span-8' }) {
   )
 }
 
-const CONFIDENCE_TEXT = { ALTA: 'confiança alta', MEDIA: 'confiança média', BAIXA: 'confiança baixa' }
-
 function KpiTile({ to, label, value, hint, status }) {
   return (
     <Link to={to} className="home-kpi">
@@ -274,24 +272,7 @@ function KpiStrip({ data, executive }) {
   )
 }
 
-function InvestigationCell({ investigation }) {
-  if (!investigation) return <span className="muted small">Ainda não investigado</span>
-  if (investigation.status === 'PENDING' || investigation.status === 'RUNNING') {
-    return <span className="home-investigating"><span className="spinner" aria-hidden="true" /> Investigando…</span>
-  }
-  if (investigation.status === 'FAILED') return <span className="muted small">A investigação falhou</span>
-  return (
-    <span className="home-cause">
-      <span className="home-cause-text">{investigation.rootCause}</span>
-      <span className="muted small">
-        {investigation.mode === 'AI' ? <span className="badge badge-ai">IA</span> : <span className="badge">Regras</span>}{' '}
-        {CONFIDENCE_TEXT[investigation.confidence] ?? ''}
-      </span>
-    </span>
-  )
-}
-
-/** Active incidents with the cause the AI found and what each one is costing: the core of the home. */
+/** Active incidents and what each one is costing: the core of the home. */
 function ActiveIncidentsWidget({ items }) {
   return (
     <Widget title="Incidentes ativos" icon="incidents" className="span-12"
@@ -305,7 +286,6 @@ function ActiveIncidentsWidget({ items }) {
               <tr>
                 <th>Incidente</th>
                 <th>Status</th>
-                <th>Causa provável</th>
                 <th className="numeric">Impacto estimado</th>
               </tr>
             </thead>
@@ -322,7 +302,6 @@ function ActiveIncidentsWidget({ items }) {
                     </span>
                   </td>
                   <td className="nowrap">{STATUS_LABEL[incident.status]}</td>
-                  <td><InvestigationCell investigation={incident.investigation} /></td>
                   <td className="numeric nowrap">
                     {incident.impactValue === null ? <span className="muted" title="Nenhum KPI ligado aos serviços">—</span>
                       : formatMoney(incident.impactValue, { compact: Number(incident.impactValue) >= 100000 })}
@@ -368,7 +347,7 @@ function ActivityWidget({ events }) {
 export default function Console() {
   const { session } = useAuth()
   const { data, error, loading, reload } = useAsync(session.role, loadConsole, 5000)
-  const activeIncidents = useApi('/ai/active-incidents', 15000)
+  const activeIncidents = useApi('/business/active-incidents', 15000)
   const executive = useApi('/business/executive?days=1', 60000)
 
   const services = data ? buildServices(data.active.content, data.recent.content, data.deploys.content, data.telemetryServices) : []
@@ -409,7 +388,7 @@ export default function Console() {
         <>
           <PageGuide
             id="console-home"
-            summary="Sala de Operação em Tempo Real: mostra a saúde atual dos seus serviços, incidentes abertos agora e causa-raiz investigada automaticamente."
+            summary="Sala de Operação em Tempo Real: mostra a saúde atual dos seus serviços, os incidentes abertos agora e o impacto estimado de cada um."
             actions={
               <>
                 <Link to="/connect" className="btn btn-small btn-primary">Conectar aplicação</Link>
