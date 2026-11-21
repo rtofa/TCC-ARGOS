@@ -1,5 +1,5 @@
 # Imagem do backend do Argos: compila com Maven e executa em uma JRE enxuta.
-FROM maven:3.9-eclipse-temurin-17 AS build
+FROM maven:3.9-eclipse-temurin-21 AS build
 WORKDIR /build
 COPY pom.xml .
 # Baixa as dependencias em uma camada propria: so refaz quando o pom.xml muda.
@@ -7,7 +7,7 @@ RUN mvn -B -ntp -q dependency:resolve dependency:resolve-plugins || true
 COPY src ./src
 RUN mvn -B -ntp -q -DskipTests package && cp target/argos-api-*.jar /build/app.jar
 
-FROM eclipse-temurin:17-jre
+FROM eclipse-temurin:21-jre
 RUN useradd --system --uid 1001 argos
 USER argos
 WORKDIR /app

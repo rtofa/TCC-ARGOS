@@ -21,7 +21,7 @@ class AiPropertiesTest {
     }
 
     @Test
-    void withoutKeysOrWithTheLlmSwitchedOffTheInvestigatorIsHeuristic() {
+    void withoutKeysOrWithTheLlmSwitchedOffNoModelIsConfigured() {
         AiProperties noKeys = new AiProperties();
         noKeys.setRoutes(List.of(route("openai/gpt-oss-120b", "")));
         AiProperties switchedOff = new AiProperties();

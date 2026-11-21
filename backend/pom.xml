@@ -27,7 +27,7 @@
 		<url/>
 	</scm>
 	<properties>
-		<java.version>17</java.version>
+		<java.version>21</java.version>
 		<spring-modulith.version>2.1.2</spring-modulith.version>
 		<langchain4j.version>1.23.0</langchain4j.version>
 	</properties>
@@ -78,7 +78,7 @@
 			<artifactId>spring-modulith-starter-core</artifactId>
 		</dependency>
 
-		<!-- AI investigations (AI-01, AI-02, AI-05): agents, tools, memory and guardrails on top of the Claude API. -->
+		<!-- AI layer (LangChain4j): chat models with fallback across providers, embeddings and reranking. -->
 		<dependency>
 			<groupId>dev.langchain4j</groupId>
 			<artifactId>langchain4j</artifactId>
@@ -90,6 +90,20 @@
 		<dependency>
 			<groupId>dev.langchain4j</groupId>
 			<artifactId>langchain4j-anthropic</artifactId>
+		</dependency>
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-cohere</artifactId>
+		</dependency>
+		<!-- Stage-level observations of the support agent (spans/metrics once a tracer or registry is wired). -->
+		<dependency>
+			<groupId>io.micrometer</groupId>
+			<artifactId>micrometer-observation</artifactId>
+		</dependency>
+		<!-- Support agent knowledge base: hybrid search (full-text + vectors, fused with RRF) on PostgreSQL + pgvector. -->
+		<dependency>
+			<groupId>dev.langchain4j</groupId>
+			<artifactId>langchain4j-pgvector</artifactId>
 		</dependency>
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

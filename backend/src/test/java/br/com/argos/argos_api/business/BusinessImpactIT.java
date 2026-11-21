@@ -97,6 +97,24 @@ class BusinessImpactIT extends AbstractIntegrationTest {
         mockMvc.perform(get("/api/business/executive?days=0").with(asExecutiveA())).andExpect(status().isBadRequest());
     }
 
+    @Test
+    void homeListsActiveIncidentsWithTheirEstimatedCost() throws Exception {
+        createKpi();
+        UUID open = insertIncident("SEV1", "checkout", Duration.ofMinutes(10), false);
+        insertIncident("SEV2", "payment", Duration.ofMinutes(10), true); // resolved: not listed
+        UUID unpriced = insertIncident("SEV3", "search", Duration.ofMinutes(10), false);
+
+        mockMvc.perform(get("/api/business/active-incidents").with(asViewerA()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].id").value(open.toString()))
+                .andExpect(jsonPath("$[0].impactMethod").value("SEVERIDADE"))
+                .andExpect(jsonPath("$[1].id").value(unpriced.toString()))
+                .andExpect(jsonPath("$[1].impactValue").doesNotExist());
+        mockMvc.perform(get("/api/business/active-incidents").with(asAdminB()))
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
     private String createKpi() throws Exception {
         MvcResult result = mockMvc.perform(post("/api/business/kpis").with(asEditorA())
                         .contentType(MediaType.APPLICATION_JSON).content(ORDERS))

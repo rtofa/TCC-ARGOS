@@ -29,7 +29,7 @@ jobs:
       - uses: actions/setup-java@v6
         with:
           distribution: temurin
-          java-version: '17'
+          java-version: '21'
           cache: maven
 
       # Testes unitários, arquitetura modular (ModularityTests), isolamento RLS (MultiTenantIsolationIT) e integração (*IT).

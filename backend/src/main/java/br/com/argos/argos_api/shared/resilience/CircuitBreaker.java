@@ -1,12 +1,12 @@
-package br.com.argos.argos_api.ai.llm;
+package br.com.argos.argos_api.shared.resilience;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 
 /**
- * Per-model circuit breaker. After {@code failureThreshold} consecutive transient failures the model is skipped for
- * {@code openDuration}; then a single trial request decides whether it closes again.
+ * Circuit breaker for one external dependency. After {@code failureThreshold} consecutive transient failures the
+ * dependency is skipped for {@code openDuration}; then a single trial request decides whether it closes again.
  */
 public final class CircuitBreaker {
 

@@ -172,6 +172,34 @@ public class BusinessImpactService {
         }
     }
 
+    /** One active incident on the console home with what it is costing ({@code impactValue} null without KPIs). */
+    public record ActiveIncident(UUID id, String title, String severity, String status, List<String> services,
+                                 Instant openedAt, BigDecimal impactValue, String impactMethod) {
+    }
+
+    /** The most severe active incidents (newest first within a severity), at most {@code limit}. */
+    public List<ActiveIncident> activeIncidents(UUID organizationId, int limit) {
+        Instant now = clock.instant();
+        return incidents.overlapping(organizationId, now, now).stream()
+                .filter(incident -> !incident.resolved())
+                .sorted(Comparator.comparing(IncidentSnapshot::severity)
+                        .thenComparing(IncidentSnapshot::openedAt, Comparator.reverseOrder()))
+                .limit(Math.max(1, Math.min(limit, 20)))
+                .map(incident -> {
+                    IncidentImpact impact = null;
+                    try {
+                        impact = estimate(organizationId, incident);
+                    } catch (RuntimeException e) {
+                        log.debug("Impacto indisponível para {}: {}", incident.id(), e.getMessage());
+                    }
+                    boolean priced = impact != null && !impact.method().equals("SEM_KPI");
+                    return new ActiveIncident(incident.id(), incident.title(), incident.severity(), incident.status(),
+                            incident.affectedServices(), incident.openedAt(), priced ? impact.totalValue() : null,
+                            impact == null ? null : impact.method());
+                })
+                .toList();
+    }
+
     /** NEG-04: cost of the incidents that overlap the window (clipped to it), with breakdowns for the dashboard. */
     public ExecutiveSummary executive(UUID organizationId, Instant from, Instant to) {
         List<IncidentSnapshot> overlapping = incidents.overlapping(organizationId, from, to);

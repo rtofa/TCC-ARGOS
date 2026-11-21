@@ -5,10 +5,11 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Records every model call made on the current thread while an agent runs, so the investigation can report which
- * models answered, whether a fallback was used, tokens (including prompt-cache hits) and cost.
+ * Records every model call made on the current thread while an agent runs, so the answer can report which models
+ * answered, whether a fallback was used, tokens (including prompt-cache hits) and cost.
  *
- * <p>Thread-confined on purpose: the agent loop and its tools run on the worker thread that started the log.
+ * <p>Thread-confined on purpose: the agent loop and its tools run on the thread that started the log; work done on
+ * other threads is added with {@link #merge}.
  */
 public final class LlmCallLog {
 
@@ -33,6 +34,20 @@ public final class LlmCallLog {
         List<LlmCall> calls = CURRENT.get();
         CURRENT.remove();
         return calls == null ? List.of() : List.copyOf(calls);
+    }
+
+    /** What was recorded so far on this thread, without ending the log. */
+    public static List<LlmCall> snapshot() {
+        List<LlmCall> calls = CURRENT.get();
+        return calls == null ? List.of() : List.copyOf(calls);
+    }
+
+    /** Adds calls recorded on another thread (e.g. a step run with its own timeout) to this thread's log. */
+    public static void merge(List<LlmCall> calls) {
+        List<LlmCall> current = CURRENT.get();
+        if (current != null && calls != null) {
+            current.addAll(calls);
+        }
     }
 
     static void record(LlmCall call) {

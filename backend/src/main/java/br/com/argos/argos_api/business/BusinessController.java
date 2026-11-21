@@ -109,6 +109,13 @@ class BusinessController {
         return impacts.forIncident(org(), id).orElseThrow(() -> new BusinessNotFoundException("Incidente não encontrado"));
     }
 
+    /** Console home: active incidents with their estimated business cost. */
+    @GetMapping("/api/business/active-incidents")
+    @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER', 'EXECUTIVE')")
+    List<BusinessImpactService.ActiveIncident> activeIncidents(@RequestParam(defaultValue = "8") int limit) {
+        return impacts.activeIncidents(org(), limit);
+    }
+
     /** NEG-04: executive view of the last {@code days} days. */
     @GetMapping("/api/business/executive")
     @PreAuthorize("hasAnyRole('ADMIN', 'EDITOR', 'VIEWER', 'EXECUTIVE')")

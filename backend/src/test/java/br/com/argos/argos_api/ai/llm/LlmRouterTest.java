@@ -2,6 +2,10 @@ package br.com.argos.argos_api.ai.llm;
 
 import br.com.argos.argos_api.ai.llm.LlmCallLog.LlmCall;
 import br.com.argos.argos_api.ai.llm.LlmCallLog.Outcome;
+import br.com.argos.argos_api.shared.resilience.CircuitBreaker;
+import br.com.argos.argos_api.shared.resilience.RetryPolicy;
+import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.exception.AuthenticationException;
@@ -20,7 +24,9 @@ import org.junit.jupiter.api.Test;
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 
@@ -147,6 +153,76 @@ class LlmRouterTest {
 
         assertThat(router.available()).isFalse();
         assertThatThrownBy(() -> router.chat(REQUEST)).isInstanceOf(AllRoutesFailedException.class);
+    }
+
+    @Test
+    void transientFailureIsRetriedWithBackoffOnTheSameModelBeforeFailingOver() {
+        AtomicInteger calls = new AtomicInteger();
+        List<Duration> sleeps = new ArrayList<>();
+        ChatModel flakyOnce = model(request -> calls.incrementAndGet() == 1
+                ? failWith(new InternalServerException("503 service unavailable"))
+                : answer("ok do principal"));
+        LlmRouter router = new LlmRouter("teste", List.of(route("primario", flakyOnce), route("reserva", answering("reserva"))),
+                Duration.ZERO, RetryPolicy.exponential(2, Duration.ofMillis(100), Duration.ofSeconds(1)),
+                Duration.ofSeconds(5), sleeps::add);
+
+        assertThat(router.chat(REQUEST).aiMessage().text()).isEqualTo("ok do principal");
+        assertThat(sleeps).hasSize(1);
+        assertThat(LlmCallLog.stop()).extracting(LlmCall::route).containsExactly("primario", "primario");
+    }
+
+    @Test
+    void streamingFailsOverWhileNoTokenReachedTheCaller() {
+        List<String> tokens = new CopyOnWriteArrayList<>();
+        LlmRouter router = new LlmRouter("teste", List.of(
+                streamingRoute("primario", streaming(List.of(), new InternalServerException("overloaded"))),
+                streamingRoute("reserva", streaming(List.of("Olá", ", mundo"), null))));
+
+        ChatResponse response = router.stream(REQUEST, tokens::add);
+
+        assertThat(tokens).containsExactly("Olá", ", mundo");
+        assertThat(response.aiMessage().text()).isEqualTo("Olá, mundo");
+        assertThat(LlmCallLog.stop()).extracting(LlmCall::outcome).containsExactly(Outcome.FAILED, Outcome.OK);
+    }
+
+    @Test
+    void aStreamThatBreaksMidAnswerIsNotSplicedWithAnotherModel() {
+        List<String> tokens = new CopyOnWriteArrayList<>();
+        AtomicInteger fallbackCalls = new AtomicInteger();
+        StreamingChatModel counting = new StreamingChatModel() {
+            @Override
+            public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
+                fallbackCalls.incrementAndGet();
+                handler.onCompleteResponse(answer("não deveria"));
+            }
+        };
+        LlmRouter router = new LlmRouter("teste", List.of(
+                streamingRoute("primario", streaming(List.of("Primeira parte"), new InternalServerException("conexão caiu"))),
+                streamingRoute("reserva", counting)));
+
+        assertThatThrownBy(() -> router.stream(REQUEST, tokens::add)).isInstanceOf(LlmRouter.PartialResponseException.class);
+        assertThat(tokens).containsExactly("Primeira parte");
+        assertThat(fallbackCalls).hasValue(0);
+    }
+
+    private static LlmRoute streamingRoute(String name, StreamingChatModel model) {
+        return new LlmRoute(name, "modelo-" + name, failing(new IllegalStateException("só streaming")), model,
+                new CircuitBreaker(3, Duration.ofMinutes(1), Clock.systemUTC()), BigDecimal.ZERO, BigDecimal.ZERO,
+                BigDecimal.ZERO);
+    }
+
+    private static StreamingChatModel streaming(List<String> tokens, RuntimeException errorAfterTokens) {
+        return new StreamingChatModel() {
+            @Override
+            public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
+                tokens.forEach(handler::onPartialResponse);
+                if (errorAfterTokens != null) {
+                    handler.onError(errorAfterTokens);
+                } else {
+                    handler.onCompleteResponse(answer(String.join("", tokens)));
+                }
+            }
+        };
     }
 
     private static LlmRoute route(String name, ChatModel model) {

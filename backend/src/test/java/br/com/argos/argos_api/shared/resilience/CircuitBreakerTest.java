@@ -1,4 +1,4 @@
-package br.com.argos.argos_api.ai.llm;
+package br.com.argos.argos_api.shared.resilience;
 
 import org.junit.jupiter.api.Test;
 

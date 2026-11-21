@@ -1,11 +1,14 @@
-package br.com.argos.argos_api.ai.llm;
+package br.com.argos.argos_api.shared.resilience;
 
 import java.time.Clock;
 import java.time.Duration;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 
-/** One breaker per model, shared by every router, so an outage seen by the assistant also protects investigations. */
+/**
+ * One breaker per dependency (an LLM model, the embedding API, the reranker, the search cluster), shared by every caller,
+ * so an outage seen by one request protects the next ones.
+ */
 public final class CircuitBreakers {
 
     private final Map<String, CircuitBreaker> byModel = new ConcurrentHashMap<>();
@@ -20,6 +23,10 @@ public final class CircuitBreakers {
     }
 
     public CircuitBreaker forModel(String model) {
-        return byModel.computeIfAbsent(model, ignored -> new CircuitBreaker(failureThreshold, openDuration, clock));
+        return forDependency(model);
+    }
+
+    public CircuitBreaker forDependency(String name) {
+        return byModel.computeIfAbsent(name, ignored -> new CircuitBreaker(failureThreshold, openDuration, clock));
     }
 }
