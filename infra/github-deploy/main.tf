@@ -12,6 +12,12 @@ locals {
   cluster         = "${var.project}-${var.environment}"
 
   oidc_provider_arn = var.create_oidc_provider ? aws_iam_openid_connect_provider.github[0].arn : data.aws_iam_openid_connect_provider.github[0].arn
+
+  # "sub" aceito: o formato com IDs imutáveis (o que o GitHub envia hoje, visto no CloudTrail) e o formato antigo.
+  allowed_subjects = compact([
+    var.github_repository_with_ids == "" ? "" : "repo:${var.github_repository_with_ids}:ref:refs/heads/${var.deploy_branch}",
+    "repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}",
+  ])
 }
 
 resource "aws_iam_openid_connect_provider" "github" {
@@ -40,7 +46,7 @@ resource "aws_iam_role" "deploy" {
         StringEquals = {
           "token.actions.githubusercontent.com:aud" = "sts.amazonaws.com"
           # Pull requests e outras branches não assumem o papel, mesmo do mesmo repositório.
-          "token.actions.githubusercontent.com:sub" = "repo:${var.github_repository}:ref:refs/heads/${var.deploy_branch}"
+          "token.actions.githubusercontent.com:sub" = local.allowed_subjects
         }
       }
     }]
