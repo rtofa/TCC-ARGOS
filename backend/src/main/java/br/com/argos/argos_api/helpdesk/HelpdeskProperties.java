@@ -179,5 +179,11 @@ public class HelpdeskProperties {
         /** Longest a whole answer may take, streaming included. */
         @NotNull
         private Duration timeout = Duration.ofSeconds(120);
+        /**
+         * How often an idle stream gets an SSE comment, so proxies (CloudFront closes after 60 s without data, the
+         * ALB after its idle timeout) keep the connection while the model is still thinking or waiting out a rate limit.
+         */
+        @NotNull
+        private Duration heartbeatInterval = Duration.ofSeconds(15);
     }
 }
