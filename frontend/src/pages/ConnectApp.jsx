@@ -210,12 +210,12 @@ export default function ConnectApp() {
 
             <label className="field">
               <span>Chave de API (X-API-Key)</span>
-              <div style={{ display: 'flex', gap: 8 }}>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                 <input
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder="argos_..."
-                  style={{ flex: 1 }}
+                  style={{ flex: '1 1 180px', minWidth: 0 }}
                 />
                 {isAdmin && (
                   <button

@@ -92,6 +92,11 @@ export default function OnboardingTour({ open, onClose }) {
         setRect(null)
         return
       }
+      const initialBox = el.getBoundingClientRect()
+      if (initialBox.width === 0 && initialBox.height === 0) {
+        setRect(null)
+        return
+      }
       el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' })
       const box = el.getBoundingClientRect()
       const pad = 8
@@ -147,6 +152,11 @@ export default function OnboardingTour({ open, onClose }) {
       transform: 'translate(-50%, -50%)',
       width: cardWidth,
     }
+  } else if (vw < 640) {
+    const spotInBottom = rect.top + rect.height / 2 > vh * 0.52
+    cardStyle = spotInBottom
+      ? { top: 12, left: 12, width: vw - 24 }
+      : { bottom: 12, left: 12, width: vw - 24 }
   } else {
     const placeRight = rect.left + rect.width + 18 + cardWidth < vw
     const placeBelow = rect.top + rect.height + 240 < vh

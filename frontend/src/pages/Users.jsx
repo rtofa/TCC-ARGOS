@@ -205,7 +205,7 @@ export default function Users() {
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Filtrar por nome ou e-mail…"
             className="filter-input"
-            style={{ minWidth: 240 }}
+            style={{ minWidth: 0, width: '100%', maxWidth: 280 }}
           />
         </div>
 

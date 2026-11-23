@@ -73,11 +73,11 @@ function SeriesCard({ title, subtitle, unit, maxVal, buckets, stepSeconds, tMin,
     label: unit === 'ms' ? Math.round(f * safeMax) : (f * safeMax).toFixed(safeMax >= 10 ? 0 : 1),
   }))
 
-  function handleMouseMove(e) {
-    if (!buckets.length) return
-    const box = e.currentTarget.getBoundingClientRect()
+  function selectNearestByClientX(svgEl, clientX) {
+    if (!buckets.length || !svgEl) return
+    const box = svgEl.getBoundingClientRect()
     if (!box.width) return
-    const svgX = ((e.clientX - box.left) / box.width) * W
+    const svgX = ((clientX - box.left) / box.width) * W
     let bestIdx = 0
     let bestDist = Infinity
     for (let i = 0; i < buckets.length; i++) {
@@ -88,6 +88,15 @@ function SeriesCard({ title, subtitle, unit, maxVal, buckets, stepSeconds, tMin,
       }
     }
     setHoveredIdx(bestIdx)
+  }
+
+  function handleMouseMove(e) {
+    selectNearestByClientX(e.currentTarget, e.clientX)
+  }
+
+  function handleTouch(e) {
+    const touch = e.touches?.[0]
+    if (touch) selectNearestByClientX(e.currentTarget, touch.clientX)
   }
 
   const hovered = hoveredIdx !== null ? buckets[hoveredIdx] : null
@@ -124,6 +133,8 @@ function SeriesCard({ title, subtitle, unit, maxVal, buckets, stepSeconds, tMin,
           aria-label={title}
           onMouseMove={handleMouseMove}
           onMouseLeave={() => setHoveredIdx(null)}
+          onTouchStart={handleTouch}
+          onTouchMove={handleTouch}
         >
           {ticks.map((t, idx) => (
             <g key={idx}>
