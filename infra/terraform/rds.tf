@@ -16,10 +16,12 @@ resource "aws_db_parameter_group" "this" {
   name   = "${local.name}-pg15"
   family = "postgres15"
 
-  # Conexões só com TLS (o backend usa sslmode=require).
+  # Conexões só com TLS (o backend usa sslmode=require). Parâmetro estático: a AWS o registra como pending-reboot,
+  # e com o padrão "immediate" o Terraform tentaria mudá-lo em todo apply. No PostgreSQL 15 do RDS o padrão já é 1.
   parameter {
-    name  = "rds.force_ssl"
-    value = "1"
+    name         = "rds.force_ssl"
+    value        = "1"
+    apply_method = "pending-reboot"
   }
 
   # Registra consultas acima de 500 ms.
