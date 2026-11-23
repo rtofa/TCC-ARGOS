@@ -40,6 +40,15 @@ variable "route53_zone_id" {
   default     = ""
 }
 
+variable "enable_cloudfront" {
+  description = <<-EOT
+    Sem domínio próprio, coloca o CloudFront na frente do ALB para ter HTTPS (certificado *.cloudfront.net, sem o
+    aviso "Não seguro"), e o ALB passa a aceitar só o CloudFront. Ignorado quando domain_name é preenchido.
+  EOT
+  type        = bool
+  default     = true
+}
+
 # ---------------------------------------------------------------------------------------------------------------
 # Capacidade (padrões econômicos para conta free tier; aumente para produção real)
 # ---------------------------------------------------------------------------------------------------------------

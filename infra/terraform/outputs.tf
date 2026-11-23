@@ -4,8 +4,13 @@ output "app_url" {
 }
 
 output "alb_dns_name" {
-  description = "DNS do load balancer (aponte o domínio para ele, se usar um registrador fora do Route 53)."
+  description = "DNS do load balancer (aponte o domínio para ele, se usar um registrador fora do Route 53). Com CloudFront, só ele chega ao ALB."
   value       = aws_lb.this.dns_name
+}
+
+output "cloudfront_domain" {
+  description = "Domínio HTTPS do CloudFront (vazio com domínio próprio ou com o CloudFront desligado)."
+  value       = local.use_cloudfront ? aws_cloudfront_distribution.this[0].domain_name : ""
 }
 
 output "region" {

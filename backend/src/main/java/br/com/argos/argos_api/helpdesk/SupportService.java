@@ -27,6 +27,9 @@ import java.util.Map;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ScheduledFuture;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -55,6 +58,9 @@ public class SupportService {
     private final ExecutorService executor;
     private final HelpdeskProperties.Execution settings;
     private final Semaphore permits;
+    /** One daemon thread for every stream's heartbeat: it only writes an SSE comment now and then. */
+    private final ScheduledExecutorService heartbeats = Executors.newSingleThreadScheduledExecutor(
+            Thread.ofPlatform().daemon().name("helpdesk-sse-heartbeat").factory());
 
     public SupportService(SupportAgent agent, KnowledgeBaseIngestor ingestor, KnowledgeStore store, TextEmbedder embedder,
                           Reranker reranker, LlmRouter router, ExecutorService executor,
@@ -88,39 +94,54 @@ public class SupportService {
      * as the model writes them), then {@code done} with the validated answer, or {@code error}.
      *
      * <p>The final answer in {@code done} is the one to show: the output guardrail may replace a draft that was
-     * streamed but turned out not to be supported by the documents.
+     * streamed but turned out not to be supported by the documents. While the answer is not ready, an SSE comment
+     * goes out every {@code heartbeat-interval} so proxies do not close an idle connection.
      */
     public SseEmitter stream(SupportRequest request) {
         acquire();
         SseEmitter emitter = new SseEmitter(settings.getTimeout().toMillis());
         SseListener listener = new SseListener(emitter);
-        emitter.onTimeout(listener::cancel);
-        emitter.onError(error -> listener.cancel());
-        emitter.onCompletion(listener::cancel);
+        long interval = settings.getHeartbeatInterval().toMillis();
+        ScheduledFuture<?> heartbeat = heartbeats.scheduleAtFixedRate(listener::heartbeat, interval, interval,
+                TimeUnit.MILLISECONDS);
+        Runnable stop = () -> {
+            listener.cancel();
+            heartbeat.cancel(false);
+        };
+        emitter.onTimeout(stop);
+        emitter.onError(error -> stop.run());
+        emitter.onCompletion(stop);
         try {
             executor.submit(MdcPropagation.wrap(() -> {
                 try {
                     SupportAnswer answer = agent.answer(request, listener);
-                    listener.send("done", answer);
+                    listener.sendFinal("done", answer);
                     emitter.complete();
                 } catch (CancellationException e) {
                     log.info("Cliente encerrou o streaming antes do fim");
                 } catch (KnowledgeBaseUnavailableException e) {
-                    listener.send("error", Map.of("status", 503, "message", e.getMessage()));
+                    listener.sendFinal("error", Map.of("status", 503, "message", e.getMessage()));
                     emitter.complete();
                 } catch (RuntimeException e) {
                     log.error("Falha inesperada no agente de suporte", e);
-                    listener.send("error", Map.of("status", 500, "message", "Não foi possível responder agora. Tente novamente."));
+                    listener.sendFinal("error", Map.of("status", 500, "message", "Não foi possível responder agora. Tente novamente."));
                     emitter.complete();
                 } finally {
+                    heartbeat.cancel(false);
                     permits.release();
                 }
             }));
         } catch (RuntimeException e) {
+            heartbeat.cancel(false);
             permits.release();
             throw e;
         }
         return emitter;
+    }
+
+    /** Called by Spring when the context closes (inferred destroy method). */
+    public void close() {
+        heartbeats.shutdownNow();
     }
 
     public CompletableFuture<IngestionReport> reindex(boolean force) {
@@ -171,6 +192,7 @@ public class SupportService {
 
         private final SseEmitter emitter;
         private final AtomicBoolean closed = new AtomicBoolean();
+        private boolean finished;
 
         SseListener(SseEmitter emitter) {
             this.emitter = emitter;
@@ -200,7 +222,25 @@ public class SupportService {
             closed.set(true);
         }
 
-        void send(String event, Object data) {
+        /** SSE comment line (":keep-alive"): clients ignore it, proxies see traffic. Never after the final event. */
+        synchronized void heartbeat() {
+            if (closed.get() || finished) {
+                return;
+            }
+            try {
+                emitter.send(SseEmitter.event().comment("keep-alive"));
+            } catch (IOException | IllegalStateException e) {
+                closed.set(true);
+            }
+        }
+
+        /** The last event of the stream ({@code done} or {@code error}); heartbeats stop before it goes out. */
+        synchronized void sendFinal(String event, Object data) {
+            finished = true;
+            send(event, data);
+        }
+
+        synchronized void send(String event, Object data) {
             if (closed.get()) {
                 return;
             }

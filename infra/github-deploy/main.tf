@@ -95,10 +95,11 @@ resource "aws_iam_role_policy" "deploy" {
         Resource = "arn:aws:ecs:${var.region}:${local.account_id}:service/${local.cluster}/*"
       },
       {
-        # Só para mostrar o endereço do console no resumo do workflow (Describe não aceita restrição por recurso).
+        # Só para mostrar o endereço do console no resumo do workflow: o HTTPS do CloudFront ou, sem ele, o ALB
+        # (essas leituras não aceitam restrição por recurso).
         Sid      = "FindAppUrl"
         Effect   = "Allow"
-        Action   = "elasticloadbalancing:DescribeLoadBalancers"
+        Action   = ["elasticloadbalancing:DescribeLoadBalancers", "cloudfront:ListDistributions"]
         Resource = "*"
       },
     ]
