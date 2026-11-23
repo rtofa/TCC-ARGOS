@@ -8,6 +8,7 @@ import br.com.argos.argos_api.apikey.dto.CreateApiKeyRequest;
 import br.com.argos.argos_api.apikey.dto.CreatedApiKeyResponse;
 import br.com.argos.argos_api.shared.security.AuthenticatedUser;
 import br.com.argos.argos_api.shared.security.CurrentUser;
+import br.com.argos.argos_api.shared.tenant.TenantSession;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -27,11 +28,14 @@ public class ApiKeyService {
     private final ApiKeyRepository repository;
     private final CurrentUser currentUser;
     private final Clock clock;
+    private final TenantSession tenantSession;
 
-    public ApiKeyService(ApiKeyRepository repository, CurrentUser currentUser, Clock clock) {
+    public ApiKeyService(ApiKeyRepository repository, CurrentUser currentUser, Clock clock,
+                         TenantSession tenantSession) {
         this.repository = repository;
         this.currentUser = currentUser;
         this.clock = clock;
+        this.tenantSession = tenantSession;
     }
 
     @Transactional
@@ -66,10 +70,13 @@ public class ApiKeyService {
         if (rawKey == null || rawKey.isBlank()) {
             return Optional.empty();
         }
-        Optional<ApiKey> key = repository.findByKeyHash(ApiKeyGenerator.hash(rawKey)).filter(ApiKey::isActive);
+        // The organization comes from the key itself, so the lookup crosses organizations (see TenantSession).
+        String hash = ApiKeyGenerator.hash(rawKey);
+        Optional<ApiKey> key = tenantSession.lookup(() -> repository.findByKeyHash(hash)).filter(ApiKey::isActive);
         key.ifPresent(k -> {
             Instant now = now();
-            repository.touchLastUsed(k.getId(), now, now.minus(LAST_USED_PRECISION));
+            tenantSession.callAs(k.getOrganizationId(),
+                    () -> repository.touchLastUsed(k.getId(), now, now.minus(LAST_USED_PRECISION)));
         });
         return key.map(k -> new ApiKeyPrincipal(k.getId(), k.getOrganizationId(), k.getPrefix()));
     }

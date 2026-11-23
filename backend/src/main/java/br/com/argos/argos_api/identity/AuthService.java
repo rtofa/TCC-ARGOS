@@ -1,5 +1,6 @@
 package br.com.argos.argos_api.identity;
 
+import br.com.argos.argos_api.shared.tenant.TenantSession;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtClaimsSet;
@@ -20,18 +21,21 @@ public class AuthService {
     private final OrganizationRepository organizationRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtEncoder jwtEncoder;
+    private final TenantSession tenantSession;
 
     public AuthService(UserRepository userRepository, OrganizationRepository organizationRepository,
-                       PasswordEncoder passwordEncoder, JwtEncoder jwtEncoder) {
+                       PasswordEncoder passwordEncoder, JwtEncoder jwtEncoder, TenantSession tenantSession) {
         this.userRepository = userRepository;
         this.organizationRepository = organizationRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtEncoder = jwtEncoder;
+        this.tenantSession = tenantSession;
     }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
-        if (userRepository.findByEmail(request.email()).isPresent()) {
+        // No organization yet: the e-mail must be unique across all of them (see TenantSession).
+        if (tenantSession.lookup(() -> userRepository.findByEmailIgnoreCase(request.email())).isPresent()) {
             throw new IllegalArgumentException("Email already in use");
         }
 
@@ -45,16 +49,16 @@ public class AuthService {
         user.setEmail(request.email());
         user.setPasswordHash(passwordEncoder.encode(request.password()));
         user.setRole(Role.ADMIN);
-        user = userRepository.save(user);
+        User saved = tenantSession.callAs(org.getId(), () -> userRepository.save(user));
 
-        String token = generateToken(user);
+        String token = generateToken(saved);
         return new AuthResponse(token);
     }
 
     @Transactional
     public AuthResponse login(LoginRequest request) {
         String email = request.email() == null ? "" : request.email().trim().toLowerCase(Locale.ROOT);
-        User user = userRepository.findByEmailIgnoreCase(email)
+        User user = tenantSession.lookup(() -> userRepository.findByEmailIgnoreCase(email))
                 .orElseThrow(() -> new IllegalArgumentException("Invalid credentials"));
 
         if (!passwordEncoder.matches(request.password(), user.getPasswordHash())) {
@@ -65,8 +69,10 @@ public class AuthService {
                     "Usuário desativado. Procure o administrador da organização.");
         }
 
-        user.setLastLoginAt(Instant.now().truncatedTo(ChronoUnit.MICROS));
-        userRepository.save(user);
+        tenantSession.callAs(user.getOrganizationId(), () -> {
+            user.setLastLoginAt(Instant.now().truncatedTo(ChronoUnit.MICROS));
+            return userRepository.save(user);
+        });
 
         String token = generateToken(user);
         return new AuthResponse(token);
