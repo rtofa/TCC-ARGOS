@@ -22,20 +22,32 @@ $ErrorActionPreference = "Stop"
 $root = Resolve-Path (Join-Path $PSScriptRoot "..\..")
 $terraformDir = Join-Path $root "infra\terraform"
 
+# docker, aws e terraform escrevem progresso e avisos no stderr. No PowerShell 5.1, com a saída redirecionada
+# (log, CI), isso viraria erro fatal por causa do "Stop" acima; quem decide se o passo falhou é o código de saída.
+function Invoke-Native([scriptblock]$Command) {
+    $previous = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Command
+    } finally {
+        $ErrorActionPreference = $previous
+    }
+}
+
 function Invoke-Checked([string]$Description, [scriptblock]$Command) {
     Write-Host "==> $Description" -ForegroundColor Cyan
-    & $Command
+    Invoke-Native $Command
     if ($LASTEXITCODE -ne 0) {
         throw "Falhou: $Description (código $LASTEXITCODE)"
     }
 }
 
 function Get-TerraformOutput([string]$Name) {
-    $value = & terraform "-chdir=$terraformDir" output -raw $Name
+    $value = Invoke-Native { & terraform "-chdir=$terraformDir" output -raw $Name 2>$null }
     if ($LASTEXITCODE -ne 0 -or -not $value) {
         throw "Saída '$Name' do Terraform não encontrada. Rode 'terraform apply' em infra/terraform antes."
     }
-    return $value.Trim()
+    return ($value | Out-String).Trim()
 }
 
 foreach ($tool in @("aws", "docker", "terraform", "git")) {
@@ -48,13 +60,16 @@ if (-not $Tag) {
     $Tag = (& git -C $root rev-parse --short HEAD).Trim()
 }
 
-$region = Get-TerraformOutput "region"
 $backendRepo = Get-TerraformOutput "ecr_backend_url"
 $frontendRepo = Get-TerraformOutput "ecr_frontend_url"
 $registry = $backendRepo.Split("/")[0]
+# Região tirada do endereço do ECR (<conta>.dkr.ecr.<região>.amazonaws.com): depois do apply com -target da
+# primeira instalação, o Terraform ainda não gravou a saída "region".
+$region = $registry.Split(".")[3]
 
+# Pipe pelo cmd: o pipeline do PowerShell 5.1 trata a senha como texto e a altera (o ECR responde 400 Bad Request).
 Invoke-Checked "Login no ECR ($registry)" {
-    aws ecr get-login-password --region $region | docker login --username AWS --password-stdin $registry
+    cmd /c "aws ecr get-login-password --region $region | docker login --username AWS --password-stdin $registry"
 }
 
 Invoke-Checked "Build do backend ($Tag)" {
