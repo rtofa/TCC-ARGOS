@@ -6,6 +6,7 @@ export const PAGES = [
   { path: '/deploys', label: 'Deploys', icon: 'deploys', description: 'O que mudou, Quality Gate e histórico' },
   { path: '/telemetry', label: 'Telemetria', icon: 'monitor', description: 'Topologia, gráficos RED, traces e logs', tourId: 'nav-telemetry' },
   { path: '/dashboards', label: 'Dashboards', icon: 'kpi', description: 'Impacto financeiro e visão executiva' },
+  { path: '/reports', label: 'Relatórios', icon: 'report', description: 'Baixe relatórios dos dados de microsserviços (CSV, JSON, HTML, PDF)' },
   { path: '/connect', label: 'Conectar App', icon: 'connect', description: 'Configure e valide sua aplicação via OpenTelemetry', tourId: 'nav-connect' },
   {
     path: '/integrations',

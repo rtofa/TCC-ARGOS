@@ -13,6 +13,7 @@ import AlertSources from './pages/AlertSources.jsx'
 import ApiKeys from './pages/ApiKeys.jsx'
 import BusinessKpis from './pages/BusinessKpis.jsx'
 import Dashboards from './pages/Dashboards.jsx'
+import Reports from './pages/Reports.jsx'
 import Integrations from './pages/Integrations.jsx'
 import Users from './pages/Users.jsx'
 import ConnectApp from './pages/ConnectApp.jsx'
@@ -41,6 +42,7 @@ export default function App() {
             <Route path="settings/business" element={<BusinessKpis />} />
             <Route path="settings/users" element={<Users />} />
             <Route path="dashboards" element={<Dashboards />} />
+            <Route path="reports" element={<Reports />} />
             <Route path="integrations" element={<Integrations />} />
             <Route path="connect" element={<ConnectApp />} />
           </Route>

@@ -33,6 +33,10 @@ const PATHS = {
   info: 'M12 21a9 9 0 1 1 0-18 9 9 0 0 1 0 18Zm0-11v6m0-9v.01',
   back: 'M15 18 9 12l6-6',
   refresh: 'M20 11a8 8 0 0 0-14.6-4.5L4 8m0-5v5h5m-5 5a8 8 0 0 0 14.6 4.5L20 16m0 5v-5h-5',
+  calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2Z',
+  download: 'M12 3v12m0 0-4.5-4.5M12 15l4.5-4.5M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2',
+  report: 'M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1Zm7 0v5h5M9 13h6M9 17h4',
+  printer: 'M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2M6 14h12v7H6v-7Z',
 }
 
 export function Icon({ name, size = 20, strokeWidth = 1.8, className }) {

@@ -107,12 +107,48 @@ async function stream(path, body, onEvent, { signal } = {}) {
   if (last) onEvent(last.name, last.data)
 }
 
+async function download(path, fallbackFilename = 'relatorio') {
+  const headers = {}
+  if (token) headers.Authorization = `Bearer ${token}`
+
+  let response
+  try {
+    response = await fetch(`/api${path}`, { method: 'GET', headers })
+  } catch {
+    throw new ApiError(0, 'Sem conexão com o servidor')
+  }
+  if (!response.ok) {
+    throw failure(response.status, path, parseJson(await response.text()))
+  }
+
+  const blob = await response.blob()
+  const disposition = response.headers.get('Content-Disposition') || ''
+  const utf8Match = /filename\*=UTF-8''([^;]+)/i.exec(disposition)
+  const asciiMatch = /filename="([^"]+)"/i.exec(disposition)
+  const filename = utf8Match
+    ? decodeURIComponent(utf8Match[1])
+    : asciiMatch
+      ? asciiMatch[1]
+      : fallbackFilename
+
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  document.body.appendChild(link)
+  link.click()
+  link.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 1000)
+  return filename
+}
+
 export const api = {
   get: (path) => request('GET', path),
   post: (path, body = {}) => request('POST', path, body),
   patch: (path, body) => request('PATCH', path, body),
   put: (path, body) => request('PUT', path, body),
   delete: (path) => request('DELETE', path),
+  download,
   stream,
 }
 

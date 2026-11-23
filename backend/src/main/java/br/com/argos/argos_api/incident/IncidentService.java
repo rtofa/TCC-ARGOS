@@ -10,6 +10,7 @@ import br.com.argos.argos_api.incident.domain.IncidentStatus;
 import br.com.argos.argos_api.incident.domain.Severity;
 import br.com.argos.argos_api.incident.dto.PageResponse;
 import br.com.argos.argos_api.incident.dto.AssignIncidentRequest;
+import br.com.argos.argos_api.incident.dto.CalendarDayResponse;
 import br.com.argos.argos_api.incident.dto.CommentRequest;
 import br.com.argos.argos_api.incident.dto.CreateIncidentRequest;
 import br.com.argos.argos_api.incident.dto.IncidentEventResponse;
@@ -27,12 +28,18 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.DateTimeException;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
+import java.util.TreeMap;
 import java.util.UUID;
 
 /**
@@ -166,6 +173,46 @@ public class IncidentService {
                         .map(SeverityMetricsBucket::from)
                         .toList();
         return new IncidentMetricsResponse(from, to, overall, bySeverity);
+    }
+
+    /**
+     * Daily incident counts and worst severity within [openedFrom, openedTo) grouped in the caller's timezone.
+     */
+    @Transactional(readOnly = true)
+    public List<CalendarDayResponse> calendar(Set<IncidentStatus> statuses, Set<Severity> severities,
+                                              Instant openedFrom, Instant openedTo, String timezone) {
+        if (openedFrom == null || openedTo == null || !openedTo.isAfter(openedFrom)) {
+            throw new IllegalArgumentException("openedFrom e openedTo são obrigatórios e openedTo deve ser posterior");
+        }
+        if (Duration.between(openedFrom, openedTo).toDays() > 93) {
+            throw new IllegalArgumentException("O calendário suporta no máximo 93 dias por consulta");
+        }
+        ZoneId zone;
+        try {
+            zone = ZoneId.of(timezone == null || timezone.isBlank() ? "America/Sao_Paulo" : timezone.trim());
+        } catch (DateTimeException ex) {
+            throw new IllegalArgumentException("Fuso horário inválido: " + timezone);
+        }
+
+        UUID organizationId = currentUser.get().organizationId();
+        List<Incident> incidents = incidentRepository.findAll(
+                IncidentSpecifications.matching(organizationId, statuses, severities, openedFrom, openedTo));
+
+        Map<LocalDate, List<Incident>> byDay = new TreeMap<>();
+        for (Incident incident : incidents) {
+            LocalDate day = incident.getOpenedAt().atZone(zone).toLocalDate();
+            byDay.computeIfAbsent(day, ignored -> new ArrayList<>()).add(incident);
+        }
+
+        return byDay.entrySet().stream()
+                .map(entry -> {
+                    Severity worst = entry.getValue().stream()
+                            .map(Incident::getSeverity)
+                            .min(Comparator.comparingInt(Enum::ordinal))
+                            .orElse(Severity.SEV4);
+                    return new CalendarDayResponse(entry.getKey(), entry.getValue().size(), worst);
+                })
+                .toList();
     }
 
     /** PostgreSQL stores microseconds; truncating keeps responses equal to what is persisted. */

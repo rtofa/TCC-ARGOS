@@ -3,6 +3,7 @@ package br.com.argos.argos_api.incident;
 import br.com.argos.argos_api.incident.domain.IncidentStatus;
 import br.com.argos.argos_api.incident.domain.Severity;
 import br.com.argos.argos_api.incident.dto.AssignIncidentRequest;
+import br.com.argos.argos_api.incident.dto.CalendarDayResponse;
 import br.com.argos.argos_api.incident.dto.PageResponse;
 import br.com.argos.argos_api.incident.dto.CommentRequest;
 import br.com.argos.argos_api.incident.dto.CreateIncidentRequest;
@@ -70,6 +71,17 @@ public class IncidentController {
             @RequestParam(required = false) Instant openedTo,
             @RequestParam(required = false) String groupBy) {
         return incidentService.metrics(openedFrom, openedTo, groupBy);
+    }
+
+    @GetMapping("/calendar")
+    @PreAuthorize(READ)
+    public List<CalendarDayResponse> calendar(
+            @RequestParam(required = false) Set<IncidentStatus> status,
+            @RequestParam(required = false) Set<Severity> severity,
+            @RequestParam Instant openedFrom,
+            @RequestParam Instant openedTo,
+            @RequestParam(defaultValue = "America/Sao_Paulo") String tz) {
+        return incidentService.calendar(status, severity, openedFrom, openedTo, tz);
     }
 
     @GetMapping("/{id}")

@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { formatDateTime, formatMs } from '../format.js'
 
@@ -60,12 +61,43 @@ function EventMarkers({ markers, tMin, tSpan }) {
   })
 }
 
-function SeriesCard({ title, subtitle, unit, maxVal, buckets, tMin, tSpan, series, markers }) {
+function bucketX(iso, tMin, tSpan) {
+  return PAD.left + clamp01((Date.parse(iso) - tMin) / tSpan) * PLOT_W
+}
+
+function SeriesCard({ title, subtitle, unit, maxVal, buckets, stepSeconds, tMin, tSpan, series, markers }) {
+  const [hoveredIdx, setHoveredIdx] = useState(null)
   const safeMax = maxVal > 0 ? maxVal * 1.12 : 1
   const ticks = [0, 0.5, 1].map((f) => ({
     y: PAD.top + PLOT_H - f * PLOT_H,
     label: unit === 'ms' ? Math.round(f * safeMax) : (f * safeMax).toFixed(safeMax >= 10 ? 0 : 1),
   }))
+
+  function handleMouseMove(e) {
+    if (!buckets.length) return
+    const box = e.currentTarget.getBoundingClientRect()
+    if (!box.width) return
+    const svgX = ((e.clientX - box.left) / box.width) * W
+    let bestIdx = 0
+    let bestDist = Infinity
+    for (let i = 0; i < buckets.length; i++) {
+      const dist = Math.abs(bucketX(buckets[i].bucket, tMin, tSpan) - svgX)
+      if (dist < bestDist) {
+        bestDist = dist
+        bestIdx = i
+      }
+    }
+    setHoveredIdx(bestIdx)
+  }
+
+  const hovered = hoveredIdx !== null ? buckets[hoveredIdx] : null
+  const hoveredX = hovered ? bucketX(hovered.bucket, tMin, tSpan) : 0
+  const hoveredLeftPct = hovered ? (hoveredX / W) * 100 : 0
+  const bucketStartMs = hovered ? Date.parse(hovered.bucket) : 0
+  const bucketEndMs = bucketStartMs + stepSeconds * 1000
+  const hoveredMarkers = hovered
+    ? markers.filter((m) => m.at >= bucketStartMs && m.at < bucketEndMs)
+    : []
 
   return (
     <section className="card red-card">
@@ -84,53 +116,115 @@ function SeriesCard({ title, subtitle, unit, maxVal, buckets, tMin, tSpan, serie
         </div>
       </div>
 
-      <svg className="red-svg" viewBox={`0 0 ${W} ${H}`} role="img" aria-label={title}>
-        {ticks.map((t, idx) => (
-          <g key={idx}>
-            <line x1={PAD.left} y1={t.y} x2={PAD.left + PLOT_W} y2={t.y} stroke="#e6ebf2" strokeWidth="1" />
-            <text x={PAD.left - 6} y={t.y + 4} textAnchor="end" className="red-axis-text">
-              {t.label}
-            </text>
-          </g>
-        ))}
+      <div className="red-plot-wrap">
+        <svg
+          className="red-svg"
+          viewBox={`0 0 ${W} ${H}`}
+          role="img"
+          aria-label={title}
+          onMouseMove={handleMouseMove}
+          onMouseLeave={() => setHoveredIdx(null)}
+        >
+          {ticks.map((t, idx) => (
+            <g key={idx}>
+              <line x1={PAD.left} y1={t.y} x2={PAD.left + PLOT_W} y2={t.y} stroke="var(--grid)" strokeWidth="1" />
+              <text x={PAD.left - 6} y={t.y + 4} textAnchor="end" className="red-axis-text">
+                {t.label}
+              </text>
+            </g>
+          ))}
 
-        {series.map((s) => (
-          <g key={s.label}>
-            {s.fill && buckets.length > 1 && (
-              <polygon points={buildArea(buckets, s.get, tMin, tSpan, safeMax)} fill={s.fill} />
+          {hovered && (
+            <line
+              x1={hoveredX}
+              y1={PAD.top}
+              x2={hoveredX}
+              y2={PAD.top + PLOT_H}
+              stroke="var(--primary)"
+              strokeWidth="1.5"
+              strokeDasharray="3 3"
+              opacity="0.7"
+            />
+          )}
+
+          {series.map((s) => (
+            <g key={s.label}>
+              {s.fill && buckets.length > 1 && (
+                <polygon points={buildArea(buckets, s.get, tMin, tSpan, safeMax)} fill={s.fill} />
+              )}
+              {buckets.length > 1 && (
+                <polyline
+                  fill="none"
+                  stroke={s.color}
+                  strokeWidth="2.2"
+                  points={buildPolyline(buckets, s.get, tMin, tSpan, safeMax)}
+                />
+              )}
+              {buckets.map((b, idx) => {
+                const x = bucketX(b.bucket, tMin, tSpan)
+                const y = PAD.top + PLOT_H - clamp01(s.get(b) / safeMax) * PLOT_H
+                const isActive = idx === hoveredIdx
+                return (
+                  <circle
+                    key={b.bucket}
+                    cx={x}
+                    cy={y}
+                    r={isActive ? 5.5 : 3}
+                    fill={s.color}
+                    stroke={isActive ? 'var(--card)' : 'none'}
+                    strokeWidth={isActive ? 2 : 0}
+                  />
+                )
+              })}
+            </g>
+          ))}
+
+          <EventMarkers markers={markers} tMin={tMin} tSpan={tSpan} />
+
+          <text x={PAD.left} y={H - 6} className="red-axis-text">
+            {formatTimeShort(new Date(tMin).toISOString())}
+          </text>
+          <text x={PAD.left + PLOT_W / 2} y={H - 6} textAnchor="middle" className="red-axis-text">
+            {formatTimeShort(new Date(tMin + tSpan / 2).toISOString())}
+          </text>
+          <text x={PAD.left + PLOT_W} y={H - 6} textAnchor="end" className="red-axis-text">
+            {formatTimeShort(new Date(tMin + tSpan).toISOString())}
+          </text>
+        </svg>
+
+        {hovered && (
+          <div
+            className={`red-tooltip ${hoveredLeftPct > 62 ? 'is-left' : ''}`}
+            style={{ left: `${hoveredLeftPct}%` }}
+            role="status"
+          >
+            <div className="red-tooltip-time">
+              <strong>{formatTimeShort(hovered.bucket)}</strong>
+              <span className="muted">{hovered.requests} req · {hovered.errors} err</span>
+            </div>
+            <ul className="red-tooltip-list">
+              {series.map((s) => (
+                <li key={s.label}>
+                  <span className="red-tooltip-key">
+                    <i style={{ background: s.color }} aria-hidden="true" />
+                    {s.label}
+                  </span>
+                  <strong>{s.format(s.get(hovered))}</strong>
+                </li>
+              ))}
+            </ul>
+            {hoveredMarkers.length > 0 && (
+              <div className="red-tooltip-events">
+                {hoveredMarkers.map((m) => (
+                  <div key={m.id} className="red-tooltip-event">
+                    <strong>{m.badge}:</strong> {m.label}
+                  </div>
+                ))}
+              </div>
             )}
-            {buckets.length > 1 && (
-              <polyline
-                fill="none"
-                stroke={s.color}
-                strokeWidth="2.2"
-                points={buildPolyline(buckets, s.get, tMin, tSpan, safeMax)}
-              />
-            )}
-            {buckets.map((b) => {
-              const x = PAD.left + clamp01((Date.parse(b.bucket) - tMin) / tSpan) * PLOT_W
-              const y = PAD.top + PLOT_H - clamp01(s.get(b) / safeMax) * PLOT_H
-              return (
-                <circle key={b.bucket} cx={x} cy={y} r="3" fill={s.color}>
-                  <title>{`${formatTimeShort(b.bucket)} — ${s.label}: ${s.format(s.get(b))}`}</title>
-                </circle>
-              )
-            })}
-          </g>
-        ))}
-
-        <EventMarkers markers={markers} tMin={tMin} tSpan={tSpan} />
-
-        <text x={PAD.left} y={H - 6} className="red-axis-text">
-          {formatTimeShort(new Date(tMin).toISOString())}
-        </text>
-        <text x={PAD.left + PLOT_W / 2} y={H - 6} textAnchor="middle" className="red-axis-text">
-          {formatTimeShort(new Date(tMin + tSpan / 2).toISOString())}
-        </text>
-        <text x={PAD.left + PLOT_W} y={H - 6} textAnchor="end" className="red-axis-text">
-          {formatTimeShort(new Date(tMin + tSpan).toISOString())}
-        </text>
-      </svg>
+          </div>
+        )}
+      </div>
     </section>
   )
 }
@@ -235,6 +329,7 @@ export default function RedCharts({ red, deploys = [], incidents = [], service }
           unit="req/m"
           maxVal={maxRate}
           buckets={buckets}
+          stepSeconds={red.stepSeconds}
           tMin={tMin}
           tSpan={tSpan}
           markers={markers}
@@ -255,6 +350,7 @@ export default function RedCharts({ red, deploys = [], incidents = [], service }
           unit="%"
           maxVal={maxErr}
           buckets={buckets}
+          stepSeconds={red.stepSeconds}
           tMin={tMin}
           tSpan={tSpan}
           markers={markers}
@@ -276,6 +372,7 @@ export default function RedCharts({ red, deploys = [], incidents = [], service }
         unit="ms"
         maxVal={maxLat}
         buckets={buckets}
+        stepSeconds={red.stepSeconds}
         tMin={tMin}
         tSpan={tSpan}
         markers={markers}

@@ -1,8 +1,9 @@
 import { useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import { query } from '../api.js'
+import { api, query } from '../api.js'
 import { useApi } from '../hooks/useApi.js'
 import { Loading, ErrorState } from '../components/States.jsx'
+import { Icon } from '../components/Icon.jsx'
 import TraceWaterfall, { LogList } from '../components/TraceWaterfall.jsx'
 import ServiceTopologyGraph from '../components/ServiceTopologyGraph.jsx'
 import RedCharts from '../components/RedCharts.jsx'
@@ -183,6 +184,8 @@ export default function Telemetry() {
   const [params, setParams] = useSearchParams()
   const [now, setNow] = useState(currentMinute)
   const [textInput, setTextInput] = useState(params.get('q') ?? '')
+  const [exporting, setExporting] = useState(false)
+  const [exportError, setExportError] = useState('')
 
   const tab = TABS[params.get('tab')] ? params.get('tab') : 'services'
   const period = PERIODS[params.get('period')] ? params.get('period') : '1h'
@@ -205,6 +208,22 @@ export default function Telemetry() {
   const window = { from: new Date(now - PERIODS[period] * 60000).toISOString() }
   const services = useApi(`/telemetry/services${query(window)}`)
 
+  async function quickCsv() {
+    setExporting(true)
+    setExportError('')
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'America/Sao_Paulo'
+      await api.download(
+        `/reports/microservices/download${query({ format: 'csv', from: window.from, to: new Date(now).toISOString(), service, tz })}`,
+        'argos-relatorio-microsservicos.csv',
+      )
+    } catch (err) {
+      setExportError(err.message || 'Falha ao exportar relatório CSV.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   return (
     <>
       <header className="page-header">
@@ -212,7 +231,15 @@ export default function Telemetry() {
           <h1>Telemetria</h1>
           <p className="muted">Topologia de microsserviços, métricas RED, traces e logs via OpenTelemetry</p>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <button type="button" className="btn report-btn" disabled={exporting} onClick={quickCsv}>
+            <Icon name="download" size={15} />
+            <span>{exporting ? 'Gerando CSV…' : 'Baixar CSV'}</span>
+          </button>
+          <Link to={`/reports${query({ period, service })}`} className="btn report-btn">
+            <Icon name="report" size={15} />
+            <span>Relatórios</span>
+          </Link>
           <Link to="/connect" className="btn">Conectar app</Link>
           <button type="button" className="btn" onClick={() => update({})}>
             Atualizar
@@ -229,6 +256,8 @@ export default function Telemetry() {
           'Mergulhe em traces individuais (waterfall) e logs correlacionados pelo traceId.',
         ]}
       />
+
+      {exportError && <div className="banner banner-alert" role="alert">{exportError}</div>}
 
       <nav className="tabs" aria-label="Sinais">
         {Object.entries(TABS).map(([key, label]) => (

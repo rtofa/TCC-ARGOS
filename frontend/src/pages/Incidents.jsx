@@ -5,8 +5,11 @@ import { useApi } from '../hooks/useApi.js'
 import { useAuth, canWrite } from '../auth/useAuth.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge, StatusBadge, ServiceChips } from '../components/Badges.jsx'
+import DateCalendar from '../components/DateCalendar.jsx'
+import { Icon } from '../components/Icon.jsx'
 import NewIncidentDialog from '../components/NewIncidentDialog.jsx'
 import PageGuide from '../components/PageGuide.jsx'
+import { dateRangeToInstants, formatBrDate, formatShortBrDate, monthBounds, parseIsoDate } from '../dates.js'
 import { SEVERITIES, STATUSES, STATUS_LABEL, formatDuration, timeAgo } from '../format.js'
 
 const PERIOD_HOURS = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
@@ -22,17 +25,33 @@ function Toggle({ pressed, onClick, children }) {
   )
 }
 
+function initialCalendarMonth(dateFrom) {
+  const parsed = parseIsoDate(dateFrom)
+  if (parsed) return { year: parsed.year, month: parsed.month - 1 }
+  const now = new Date()
+  return { year: now.getFullYear(), month: now.getMonth() }
+}
+
+function buildDayMeta(days) {
+  if (!Array.isArray(days)) return {}
+  return Object.fromEntries(days.map((d) => [d.date, { count: d.count, highestSeverity: d.highestSeverity }]))
+}
+
 export default function Incidents() {
   const { session } = useAuth()
   const [params, setParams] = useSearchParams()
   const [creating, setCreating] = useState(false)
+  const [calendarOpen, setCalendarOpen] = useState(() => Boolean(params.get('dateFrom')))
   // "now" only moves when the user changes a filter, so the request path stays stable between renders.
   const [now, setNow] = useState(currentMinute)
 
   const statuses = params.getAll('status')
   const severities = params.getAll('severity')
   const period = params.get('period') ?? ''
+  const dateFrom = params.get('dateFrom') ?? ''
+  const dateTo = params.get('dateTo') ?? ''
   const page = Number(params.get('page') ?? 0)
+  const [calendarMonth, setCalendarMonth] = useState(() => initialCalendarMonth(dateFrom))
 
   function update(changes) {
     const next = new URLSearchParams(params)
@@ -47,10 +66,23 @@ export default function Incidents() {
   const toggle = (key, current, value) =>
     update({ [key]: current.includes(value) ? current.filter((v) => v !== value) : [...current, value] })
 
-  const openedFrom = PERIOD_HOURS[period] ? new Date(now - PERIOD_HOURS[period] * 3600e3).toISOString() : undefined
+  const customRange = dateRangeToInstants(dateFrom, dateTo)
+  const openedFrom = customRange.from ?? (PERIOD_HOURS[period] ? new Date(now - PERIOD_HOURS[period] * 3600e3).toISOString() : undefined)
+  const openedTo = customRange.to
   const { data, error, loading, reload } = useApi(
-    `/incidents${query({ status: statuses, severity: severities, openedFrom, page, size: PAGE_SIZE })}`,
+    `/incidents${query({ status: statuses, severity: severities, openedFrom, openedTo, page, size: PAGE_SIZE })}`,
   )
+
+  const calendarPath = calendarOpen
+    ? `/incidents/calendar${query({ status: statuses, severity: severities, ...monthBounds(calendarMonth.year, calendarMonth.month) })}`
+    : null
+  const calendarDays = useApi(calendarPath)
+
+  const dateButtonLabel = dateFrom
+    ? dateTo && dateTo !== dateFrom
+      ? `${formatShortBrDate(dateFrom)} – ${formatShortBrDate(dateTo)}`
+      : formatBrDate(dateFrom)
+    : 'Calendário'
 
   return (
     <>
@@ -70,8 +102,8 @@ export default function Incidents() {
         id="incidents"
         summary="Central de gestão de crises: incidentes são abertos manualmente, por webhooks de alerta (agrupados por serviço) ou pelo monitor automático de SLO OTLP."
         steps={[
+          'Filtre por status, severidade, período ou use o Calendário para visualizar dias com incidentes e filtrar por data ou intervalo.',
           'Clique em um incidente para abrir a Sala de Guerra com linha do tempo, deploys relacionados e impacto financeiro.',
-          'Verifique se algum deploy recente precede a falha e inspecione traces/logs com erro filtrados automaticamente.',
           'Atualize o status (Aberto → Investigando → Mitigado → Resolvido) para alimentar MTTA e MTTR.',
         ]}
       />
@@ -93,16 +125,52 @@ export default function Incidents() {
             </Toggle>
           ))}
         </div>
-        <label className="filter-group">
-          <span className="filter-label">Aberto em</span>
-          <select value={period} onChange={(e) => update({ status: statuses, severity: severities, period: e.target.value })}>
-            <option value="">Qualquer data</option>
-            <option value="24h">Últimas 24 h</option>
-            <option value="7d">Últimos 7 dias</option>
-            <option value="30d">Últimos 30 dias</option>
-          </select>
-        </label>
+        <div className="filter-group">
+          <label className="filter-group" style={{ margin: 0 }}>
+            <span className="filter-label">Aberto em</span>
+            <select
+              value={dateFrom ? '' : period}
+              onChange={(e) => update({ status: statuses, severity: severities, period: e.target.value, dateFrom: '', dateTo: '' })}
+            >
+              <option value="">{dateFrom ? 'Data personalizada' : 'Qualquer data'}</option>
+              <option value="24h">Últimas 24 h</option>
+              <option value="7d">Últimos 7 dias</option>
+              <option value="30d">Últimos 30 dias</option>
+            </select>
+          </label>
+          <button
+            type="button"
+            className="toggle calendar-trigger"
+            aria-pressed={calendarOpen || Boolean(dateFrom)}
+            onClick={() => setCalendarOpen((v) => !v)}
+          >
+            <Icon name="calendar" size={14} />
+            <span>{dateButtonLabel}</span>
+          </button>
+          {dateFrom && (
+            <button
+              type="button"
+              className="link-button small"
+              onClick={() => update({ status: statuses, severity: severities, period: '', dateFrom: '', dateTo: '' })}
+            >
+              Limpar
+            </button>
+          )}
+        </div>
       </section>
+
+      {calendarOpen && (
+        <DateCalendar
+          dateFrom={dateFrom}
+          dateTo={dateTo}
+          dayMeta={buildDayMeta(calendarDays.data)}
+          onMonthChange={(year, month) => setCalendarMonth({ year, month })}
+          onChange={({ dateFrom: nextFrom, dateTo: nextTo }) =>
+            update({ status: statuses, severity: severities, period: '', dateFrom: nextFrom, dateTo: nextTo })
+          }
+          onClose={() => setCalendarOpen(false)}
+        />
+      )}
 
       {error && <ErrorState error={error} onRetry={reload} />}
       {!data && !error && <Loading />}
