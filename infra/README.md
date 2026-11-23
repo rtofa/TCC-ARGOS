@@ -140,7 +140,7 @@ O job **Deploy na AWS** do workflow de CI ([.github/workflows/ci.yml](../.github
    ```
 
    Ela cria o provedor OIDC do GitHub e o papel `argos-github-deploy`. O papel só aceita workflows da branch `main` deste repositório, só envia imagens aos repositórios do Argos e só reinicia os serviços dele. Nenhuma chave fica guardada no GitHub: a cada execução, o GitHub troca um token de curta duração por credenciais temporárias. Se o repositório mudar de dono ou de nome, ajuste `github_repository` em `variables.tf`.
-2. No GitHub, abra **Settings > Secrets and variables > Actions > Variables > New repository variable** e crie `AWS_DEPLOY_ROLE_ARN` com o valor do passo 1. Se a região não for `us-east-2`, crie também `AWS_REGION`.
+2. No GitHub, abra **Settings > Secrets and variables > Actions** e crie `AWS_DEPLOY_ROLE_ARN` com o valor do passo 1. Pode ser na aba **Variables** (recomendado: não é segredo) ou em **Secrets**; o workflow aceita os dois. Se a região não for `us-east-2`, crie também a variável `AWS_REGION`.
 3. Para publicar sem esperar um merge, use **Actions > CI > Run workflow**, na `main`.
 
 Na primeira instalação, o workflow também substitui o `deploy.ps1 -PushOnly` (passo 2): depois do `terraform apply -target=...` do ECR, rode **Run workflow**. Ele envia as imagens sem build na sua máquina. Depois, rode o `terraform apply` completo.
