@@ -314,7 +314,7 @@ O Argos também pode registrar os próprios deploys: um passo final no pipeline 
 - [ ] Canais de Slack, Discord e e-mail recebem o teste.
 - [ ] Registrar deploy e consultar o Quality Gate (200 e 409).
 - [ ] KPI cadastrado mostra impacto em R$ no incidente.
-- [ ] Lia: base indexada (22 documentos), resposta com fontes, fora do escopo recusado, prompt injection bloqueado, streaming sem corte por mais de 60 s.
+- [ ] Lia: base indexada (22 documentos), resposta baseada na documentação, fora do escopo recusado, prompt injection bloqueado, streaming sem corte por mais de 60 s.
 - [ ] Deploy de uma versão nova sem deslogar ninguém (valida o B1) e sem erros 5xx.
 - [ ] Rollback testado (voltar para a task definition anterior).
 

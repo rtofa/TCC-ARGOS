@@ -807,17 +807,8 @@ code.mono { padding: 1px 5px; background: var(--surface-2); border-radius: 4px; 
 .answer-text strong { font-weight: 650; }
 .answer-heading { font-weight: 650; }
 .answer-code { margin: 0 0 6px; padding: 8px 10px; overflow-x: auto; font: 12px/1.5 ui-monospace, Consolas, monospace; background: var(--surface-2); border: 1px solid var(--border); border-radius: 8px; }
-.citation { display: inline-grid; place-items: center; min-width: 18px; height: 18px; margin: 0 1px; padding: 0 5px; font: 650 10.5px var(--sans); vertical-align: 2px; color: var(--primary-dark); background: var(--primary-soft); border: 0; border-radius: 9px; cursor: pointer; transition: background 0.15s ease, color 0.15s ease; }
-.citation:hover { color: #fff; background: var(--lia-gradient); }
 
 .lia-error { margin: 0; color: var(--alert-text); }
-.lia-sources { padding-top: 10px; border-top: 1px dashed var(--border); }
-.lia-sources-title { margin: 0 0 6px; font-size: 11px; font-weight: 650; color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em; }
-.lia-sources ol { display: flex; flex-direction: column; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.lia-sources li { display: flex; align-items: flex-start; gap: 8px; padding: 6px 8px; font-size: 12.5px; background: var(--surface-2); border-radius: 8px; transition: background 0.2s ease, box-shadow 0.2s ease; }
-.lia-sources li.is-highlighted { background: var(--primary-soft); box-shadow: inset 3px 0 0 var(--lia-a); }
-.lia-source-index { flex: none; display: inline-grid; place-items: center; width: 18px; height: 18px; font-size: 10.5px; font-weight: 700; color: #fff; background: var(--lia-gradient); border-radius: 50%; }
-.lia-source-section { color: var(--muted); }
 
 .lia-composer { display: flex; align-items: flex-end; gap: 8px; margin: 0 12px; padding: 6px 6px 6px 14px; background: var(--card); border: 1px solid var(--border); border-radius: 16px; transition: border-color 0.15s ease, box-shadow 0.15s ease; }
 .lia-composer:focus-within { border-color: var(--lia-a); box-shadow: 0 0 0 4px color-mix(in srgb, var(--lia-a) 16%, transparent); }

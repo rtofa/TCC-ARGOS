@@ -33,8 +33,11 @@ jobs:
           cache: maven
 
       # Testes unitários, arquitetura modular (ModularityTests), isolamento RLS (MultiTenantIsolationIT) e integração (*IT).
+      # Maven e dependências vêm do espelho do Google: o Maven Central responde 429 aos runners (.github/maven-settings.xml).
       - name: Build e testes
-        run: ./mvnw -B -ntp verify -Dtest="!ArgosBenchmarkIT"
+        env:
+          MVNW_REPOURL: https://maven-central.storage-download.googleapis.com/maven2
+        run: ./mvnw -B -ntp -s ../.github/maven-settings.xml verify -Dtest="!ArgosBenchmarkIT"
 
       - name: Publicar relatórios de teste
         if: failure()
@@ -134,11 +137,9 @@ jobs:
     name: Deploy na AWS (ECS Fargate)
     needs: [quality-gate]
     # Só um merge na main (ou execução manual a partir dela) publica; pull requests rodam apenas os jobs acima.
-    # Sem a variável AWS_DEPLOY_ROLE_ARN (infra/README.md, "Deploy automático"), o job fica de fora.
     if: >-
       github.ref == 'refs/heads/main' &&
-      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
-      vars.AWS_DEPLOY_ROLE_ARN != ''
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -152,19 +153,35 @@ jobs:
       CLUSTER: argos-prod
       BACKEND_REPO: argos/backend
       FRONTEND_REPO: argos/frontend
+      # ARN do papel de deploy (infra/README.md, "Deploy automático"). Não é segredo, mas vale como Variable ou
+      # como Secret do repositório. O if: do job não enxerga secrets, por isso a checagem é o primeiro passo.
+      AWS_DEPLOY_ROLE_ARN: ${{ vars.AWS_DEPLOY_ROLE_ARN || secrets.AWS_DEPLOY_ROLE_ARN }}
     steps:
+      - name: Deploy configurado?
+        id: config
+        run: |
+          if [ -z "$AWS_DEPLOY_ROLE_ARN" ]; then
+            echo "::notice title=Deploy pulado::Crie AWS_DEPLOY_ROLE_ARN (Variable ou Secret do repositório) para publicar na AWS."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: actions/checkout@v7
+        if: steps.config.outputs.enabled == 'true'
 
       - name: Credenciais temporárias da AWS (OIDC)
+        if: steps.config.outputs.enabled == 'true'
         uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          role-to-assume: ${{ env.AWS_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       # O ambiente só fica ligado no dia da apresentação (infra/README.md). Desligado, não há repositórios no ECR
       # nem cluster: o job termina verde, avisando que nada foi publicado.
       - name: Ambiente ligado?
         id: state
+        if: steps.config.outputs.enabled == 'true'
         run: |
           set -euo pipefail
           echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
@@ -210,6 +227,7 @@ jobs:
           context: backend
           push: true
           provenance: false
+          build-args: MAVEN_MIRROR=https://maven-central.storage-download.googleapis.com/maven2
           tags: |
             ${{ steps.state.outputs.registry }}/${{ env.BACKEND_REPO }}:${{ steps.state.outputs.tag }}
             ${{ steps.state.outputs.registry }}/${{ env.BACKEND_REPO }}:latest

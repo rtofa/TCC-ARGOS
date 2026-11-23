@@ -100,4 +100,4 @@ Não. A Lia responde com base na documentação oficial do Argos e não acessa o
 
 ### A Lia pode errar?
 
-A Lia só responde com base na documentação e cada resposta é conferida antes de ser exibida, mas confira as fontes citadas em decisões importantes. Quando a documentação não cobre a pergunta, ela diz que não encontrou.
+A Lia só responde com base na documentação e cada resposta é conferida antes de ser exibida, mas, em decisões importantes, confirme também na própria tela do Argos. Quando a documentação não cobre a pergunta, ela diz que não encontrou.

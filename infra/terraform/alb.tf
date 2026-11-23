@@ -108,9 +108,11 @@ resource "aws_lb_listener_rule" "api" {
     target_group_arn = aws_lb_target_group.backend.arn
   }
 
+  # O health check do Actuator também vai ao backend: sem isso, o nginx responde 200 com a página do SPA e uma
+  # verificação externa (teste de fumaça, monitor) daria "saudável" mesmo com o backend fora do ar.
   condition {
     path_pattern {
-      values = ["/api/*"]
+      values = ["/api/*", "/actuator/health", "/actuator/health/*"]
     }
   }
 }

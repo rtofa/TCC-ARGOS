@@ -4,13 +4,13 @@ title: Lia, a assistente do Argos
 
 # Lia, a assistente do Argos
 
-A **Lia** é a assistente virtual do Argos. Ela tira dúvidas sobre o funcionamento, as funcionalidades, os processos e o uso da plataforma, respondendo com base nesta documentação oficial e citando as fontes de cada resposta.
+A **Lia** é a assistente virtual do Argos. Ela tira dúvidas sobre o funcionamento, as funcionalidades, os processos e o uso da plataforma, respondendo somente com base nesta documentação oficial.
 
 ## Como falar com a Lia
 
 1. Clique no **balão com ponto de interrogação** no canto inferior direito de qualquer tela (ao passar o mouse aparece "Dúvidas? Fale com a Lia").
 2. Escreva a pergunta no campo "Pergunte para a Lia…" e pressione Enter (Shift+Enter quebra a linha), ou clique em uma das sugestões.
-3. A resposta aparece enquanto é escrita. Os números entre colchetes, como **1**, apontam para as **Fontes** listadas no fim da resposta; clicar no número destaca a fonte.
+3. A resposta aparece enquanto é escrita.
 4. Para interromper uma resposta, clique no botão de parar. Para recomeçar do zero, use o botão de **Nova conversa** no topo do chat.
 5. Feche o chat no **X** ou com a tecla Esc. A conversa continua guardada enquanto você navega entre as telas.
 
@@ -39,7 +39,7 @@ A Lia entende perguntas de continuação, como "e para o Discord?" depois de per
 1. **Verificação da pergunta**: dados pessoais são mascarados e tentativas de manipulação são bloqueadas.
 2. **Entendimento**: a Lia identifica se a pergunta é sobre o Argos e a reescreve quando ela depende da conversa anterior.
 3. **Busca na documentação**: a documentação é buscada de duas formas ao mesmo tempo, por palavras (busca textual) e por significado (busca semântica), e os resultados são combinados e ordenados por relevância.
-4. **Resposta**: a Lia escreve a resposta usando apenas os trechos encontrados e cita cada um.
+4. **Resposta**: a Lia escreve a resposta usando apenas os trechos encontrados e marca de qual trecho veio cada informação (essas marcações servem à conferência e não aparecem na tela).
 5. **Conferência**: antes de exibir, a resposta é conferida com os trechos. Se ela citar fontes inexistentes ou trouxer dados que não estão na documentação, é trocada por "não encontrei".
 
 Se os modelos de linguagem estiverem indisponíveis, a Lia mostra os trechos da documentação mais relacionados à pergunta.
