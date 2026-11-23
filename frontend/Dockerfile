@@ -7,6 +7,8 @@ COPY . .
 RUN npm run build
 
 FROM nginx:1.27-alpine
-COPY nginx.conf /etc/nginx/conf.d/default.conf
+# O entrypoint do nginx gera /etc/nginx/conf.d/default.conf a partir do template com envsubst.
+ENV API_UPSTREAM=http://backend:8081
+COPY nginx.conf.template /etc/nginx/templates/default.conf.template
 COPY --from=build /build/dist /usr/share/nginx/html
 EXPOSE 80
