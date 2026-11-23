@@ -105,7 +105,14 @@ Todos os comandos rodam no PowerShell, a partir da raiz do repositório.
    aws logs tail /ecs/argos-prod/backend --follow --region us-east-2
    ```
 
-5. **Primeiro acesso:** abra o `app_url`, clique em **Primeira vez aqui? Criar conta** e crie a organização. Quem cria vira Administrador.
+5. **Primeiro acesso:** abra o `app_url`. Se `enable_demo = true` (padrão), a EC2 da **OpenTelemetry Demo** cria automaticamente a organização `Loja Demo` (`admin@demo.argos` / `Argos@2026!`) e começa a enviar traces, logs e métricas após ~3 a 5 minutos. Para desligar a EC2 da demo e economizar, defina `enable_demo = false` no `terraform.tfvars` e rode `terraform apply`.
+   - Ver URL da loja demo: `terraform output demo_shop_url` (porta `8080`, `/loadgen/` e `/feature`).
+   - Injetar falha na demo pela AWS (via SSM Session Manager):
+     ```powershell
+     aws ssm start-session --target $(terraform output -raw demo_instance_id) --region us-east-2
+     # dentro da sessão:
+     sudo /opt/argos/demo/trigger-failure.sh productCatalogFailure
+     ```
 
 ## Publicar uma nova versão
 

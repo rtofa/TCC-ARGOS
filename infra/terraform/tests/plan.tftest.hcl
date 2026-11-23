@@ -27,9 +27,24 @@ mock_provider "aws" {
     }
   }
 
+  mock_data "aws_ssm_parameter" {
+    defaults = {
+      value = "ami-0123456789abcdef0"
+    }
+  }
+
   # ARNs em formato válido: o provider valida o formato mesmo com recursos simulados.
   mock_resource "aws_iam_role" {
     defaults = { arn = "arn:aws:iam::123456789012:role/mock" }
+  }
+  mock_resource "aws_iam_instance_profile" {
+    defaults = { name = "argos-prod-demo" }
+  }
+  mock_resource "aws_instance" {
+    defaults = {
+      id        = "i-0123456789abcdef0"
+      public_ip = "203.0.113.10"
+    }
   }
   mock_resource "aws_ssm_parameter" {
     defaults = { arn = "arn:aws:ssm:us-east-1:123456789012:parameter/argos/prod/mock" }
@@ -229,4 +244,21 @@ run "slot_invalido_e_recusado" {
   }
 
   expect_failures = [var.llm_routes]
+}
+
+run "sem_demo_ec2" {
+  command = apply
+
+  variables {
+    enable_demo = false
+    llm_routes = {
+      primary = { base_url = "https://api.groq.com/openai/v1", model = "openai/gpt-oss-120b" }
+    }
+    llm_api_keys = { primary = "gsk_teste" }
+  }
+
+  assert {
+    condition     = length(aws_instance.demo) == 0 && length(aws_security_group.demo) == 0
+    error_message = "Com enable_demo = false não deve haver instância EC2 da demo."
+  }
 }

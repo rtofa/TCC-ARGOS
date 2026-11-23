@@ -51,3 +51,7 @@ db_skip_final_snapshot = false
 
 # Capacidade (padrões econômicos). Para produção real: backend_cpu = 1024, backend_memory = 2048,
 # backend_desired_count = 2, db_multi_az = true, db_deletion_protection = true, db_skip_final_snapshot = false.
+
+# OpenTelemetry Demo (Astronomy Shop) rodando na AWS em uma EC2 t3.medium (opcional; ~30 USD/mes).
+enable_demo        = true
+demo_instance_type = "t3.medium"

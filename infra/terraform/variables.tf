@@ -244,3 +244,49 @@ variable "ecr_force_delete" {
   type        = bool
   default     = true
 }
+
+# ---------------------------------------------------------------------------------------------------------------
+# OpenTelemetry Demo (Astronomy Shop) na AWS
+# ---------------------------------------------------------------------------------------------------------------
+variable "enable_demo" {
+  description = "Sobe uma instância EC2 na AWS rodando a OpenTelemetry Demo enviando telemetria ao Argos."
+  type        = bool
+  default     = true
+}
+
+variable "demo_instance_type" {
+  description = "Tipo da instância EC2 para os ~20 containers da OpenTelemetry Demo (recomendado: t3.medium, 4 GB RAM)."
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "demo_allowed_cidrs" {
+  description = "CIDRs permitidos para acessar a loja/loadgen/flagd da demo na porta 8080."
+  type        = list(string)
+  default     = ["0.0.0.0/0"]
+}
+
+variable "demo_repo_url" {
+  description = "URL do repositório Git clonado pela EC2 da demo."
+  type        = string
+  default     = "https://github.com/rtofa/TCC-ARGOS.git"
+}
+
+variable "demo_repo_branch" {
+  description = "Branch do repositório clonado pela EC2 da demo."
+  type        = string
+  default     = "main"
+}
+
+variable "demo_admin_email" {
+  description = "E-mail do administrador da organização Loja Demo criada automaticamente na AWS."
+  type        = string
+  default     = "admin@demo.argos"
+}
+
+variable "demo_admin_password" {
+  description = "Senha do administrador da organização Loja Demo na AWS."
+  type        = string
+  default     = "Argos@2026!"
+  sensitive   = true
+}
