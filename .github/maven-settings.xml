@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Maven no CI: baixa do espelho do Maven Central mantido pelo Google em vez de repo.maven.apache.org.
+  Os runners do GitHub compartilham IPs, e o Maven Central responde 429 (limite de requisições, com
+  Retry-After de 30 minutos), o que derrubava o build antes de compilar. Mesmos artefatos e checksums.
+  Usado por .github/workflows/ci.yml; o desenvolvimento local continua no Maven Central.
+-->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0"
+          xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+          xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.2.0 https://maven.apache.org/xsd/settings-1.2.0.xsd">
+  <mirrors>
+    <mirror>
+      <id>google-maven-central</id>
+      <name>Maven Central (espelho do Google)</name>
+      <url>https://maven-central.storage-download.googleapis.com/maven2</url>
+      <mirrorOf>central</mirrorOf>
+    </mirror>
+  </mirrors>
+</settings>
