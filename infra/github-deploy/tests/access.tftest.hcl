@@ -32,8 +32,16 @@ run "papel_restrito_a_branch_main" {
   command = apply
 
   assert {
-    condition     = jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] == "repo:rtofa/TCC-ARGOS:ref:refs/heads/main"
-    error_message = "O papel deve aceitar só tokens da branch main do repositório."
+    condition = toset(jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"]) == toset([
+      "repo:rtofa@132409828/TCC-ARGOS@1381994977:ref:refs/heads/main",
+      "repo:rtofa/TCC-ARGOS:ref:refs/heads/main",
+    ])
+    error_message = "O papel deve aceitar só tokens da branch main do repositório (formato com IDs e formato antigo)."
+  }
+
+  assert {
+    condition     = alltrue([for subject in jsondecode(aws_iam_role.deploy.assume_role_policy).Statement[0].Condition.StringEquals["token.actions.githubusercontent.com:sub"] : length(regexall("[*?]", subject)) == 0])
+    error_message = "O sub não pode ter curingas: com StringEquals eles nem funcionariam, e abririam o papel a outros repositórios."
   }
 
   assert {

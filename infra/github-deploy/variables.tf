@@ -27,6 +27,22 @@ variable "github_repository" {
   }
 }
 
+variable "github_repository_with_ids" {
+  description = <<-EOT
+    O mesmo repositório no formato com IDs imutáveis que o GitHub usa no "sub" do token OIDC:
+    dono@<id do dono>/repo@<id do repo>. Os IDs impedem que uma conta ou repositório recriado com o mesmo nome
+    assuma o papel. Para descobrir: o principalId do evento AssumeRoleWithWebIdentity no CloudTrail, ou
+    https://api.github.com/repos/<dono>/<repo> (campos owner.id e id). Vazio = só o formato antigo.
+  EOT
+  type        = string
+  default     = "rtofa@132409828/TCC-ARGOS@1381994977"
+
+  validation {
+    condition     = var.github_repository_with_ids == "" || can(regex("^[A-Za-z0-9_.-]+@[0-9]+/[A-Za-z0-9_.-]+@[0-9]+$", var.github_repository_with_ids))
+    error_message = "Use o formato dono@<id>/repo@<id>, por exemplo rtofa@132409828/TCC-ARGOS@1381994977."
+  }
+}
+
 variable "deploy_branch" {
   description = "Única branch cujos workflows podem assumir o papel de deploy."
   type        = string
