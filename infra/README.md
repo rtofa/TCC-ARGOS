@@ -27,7 +27,7 @@ As tasks ficam em subnets públicas com IP público para sair à internet sem NA
 
 ## Custos (estimativa)
 
-Valores aproximados em us-east-1, ligado 24 horas por dia, **sem** descontos de free tier:
+Valores aproximados em us-east-2 (Ohio, mesmo preço de us-east-1), ligado 24 horas por dia, **sem** descontos de free tier:
 
 | Item | USD/mês (aprox.) |
 |---|---|
@@ -64,7 +64,7 @@ Valores aproximados em us-east-1, ligado 24 horas por dia, **sem** descontos de 
 - [ ] Chave da OpenAI para os embeddings da busca vetorial (opcional; sem ela a Lia usa só busca textual).
 - [ ] Chave da Cohere para o rerank (opcional).
 - [ ] E-mail para os alertas de custo.
-- [ ] Região: `us-east-1` (mais barata) ou `sa-east-1` (São Paulo, menor latência).
+- [ ] Região: `us-east-2` (Ohio). A organização da conta (SCP) nega as outras; confira com `aws ec2 describe-availability-zones --region <região>`.
 - [ ] Acesso de administrador ao repositório no GitHub, para criar a variável `AWS_DEPLOY_ROLE_ARN` do deploy automático.
 - [ ] Opcional: domínio em uma hosted zone do Route 53, para ter HTTPS.
 - [ ] Opcional: Amazon SES com domínio verificado e credenciais SMTP, para o canal de e-mail.
@@ -101,7 +101,7 @@ Todos os comandos rodam no PowerShell, a partir da raiz do repositório.
 4. **Aguarde o backend ficar saudável.** Na primeira subida ele cria as tabelas, a extensão pgvector e indexa os 22 documentos da Lia, o que leva de 2 a 5 minutos. Para acompanhar:
 
    ```powershell
-   aws logs tail /ecs/argos-prod/backend --follow --region us-east-1
+   aws logs tail /ecs/argos-prod/backend --follow --region us-east-2
    ```
 
 5. **Primeiro acesso:** abra o `app_url`, clique em **Primeira vez aqui? Criar conta** e crie a organização. Quem cria vira Administrador.
@@ -140,7 +140,7 @@ O job **Deploy na AWS** do workflow de CI ([.github/workflows/ci.yml](../.github
    ```
 
    Ela cria o provedor OIDC do GitHub e o papel `argos-github-deploy`. O papel só aceita workflows da branch `main` deste repositório, só envia imagens aos repositórios do Argos e só reinicia os serviços dele. Nenhuma chave fica guardada no GitHub: a cada execução, o GitHub troca um token de curta duração por credenciais temporárias. Se o repositório mudar de dono ou de nome, ajuste `github_repository` em `variables.tf`.
-2. No GitHub, abra **Settings > Secrets and variables > Actions > Variables > New repository variable** e crie `AWS_DEPLOY_ROLE_ARN` com o valor do passo 1. Se a região não for `us-east-1`, crie também `AWS_REGION`.
+2. No GitHub, abra **Settings > Secrets and variables > Actions > Variables > New repository variable** e crie `AWS_DEPLOY_ROLE_ARN` com o valor do passo 1. Se a região não for `us-east-2`, crie também `AWS_REGION`.
 3. Para publicar sem esperar um merge, use **Actions > CI > Run workflow**, na `main`.
 
 Na primeira instalação, o workflow também substitui o `deploy.ps1 -PushOnly` (passo 2): depois do `terraform apply -target=...` do ECR, rode **Run workflow**. Ele envia as imagens sem build na sua máquina. Depois, rode o `terraform apply` completo.

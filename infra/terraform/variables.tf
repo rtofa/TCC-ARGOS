@@ -14,9 +14,9 @@ variable "environment" {
 }
 
 variable "region" {
-  description = "Região da AWS. us-east-1 é a mais barata; sa-east-1 (São Paulo) tem menor latência no Brasil."
+  description = "Região da AWS. us-east-2 (Ohio): a única liberada pela organização da conta (SCP), com o mesmo preço de us-east-1."
   type        = string
-  default     = "us-east-1"
+  default     = "us-east-2"
 }
 
 variable "vpc_cidr" {

@@ -1,6 +1,6 @@
 # Copie para terraform.tfvars (ignorado pelo Git) e preencha. Este arquivo tem segredos: não compartilhe.
 
-region      = "us-east-1" # ou "sa-east-1" (São Paulo): menor latência, custo um pouco maior
+region      = "us-east-2" # Ohio: a organização da conta só libera esta região (mesmo preço de us-east-1)
 environment = "prod"
 
 # Alertas de custo (recomendado em conta free tier)
@@ -40,7 +40,7 @@ openai_api_key = "sk-..."
 cohere_api_key = ""
 
 # E-mail via Amazon SES (opcional).
-# smtp_host     = "email-smtp.us-east-1.amazonaws.com"
+# smtp_host     = "email-smtp.us-east-2.amazonaws.com"
 # smtp_username = "AKIA..."
 # smtp_password = "..."
 # mail_from     = "noreply@seudominio.com.br"

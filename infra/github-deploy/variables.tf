@@ -1,7 +1,7 @@
 variable "region" {
   description = "Região do ambiente (a mesma de infra/terraform)."
   type        = string
-  default     = "us-east-1"
+  default     = "us-east-2"
 }
 
 variable "project" {

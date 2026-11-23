@@ -4,6 +4,6 @@ output "role_arn" {
 }
 
 output "region" {
-  description = "Valor da variável AWS_REGION no GitHub (opcional; o padrão do workflow é us-east-1)."
+  description = "Valor da variável AWS_REGION no GitHub (opcional; o padrão do workflow é us-east-2)."
   value       = var.region
 }

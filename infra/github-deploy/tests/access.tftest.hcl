@@ -59,7 +59,7 @@ run "politica_so_alcanca_os_recursos_do_argos" {
   }
 
   assert {
-    condition     = contains([for statement in jsondecode(aws_iam_role_policy.deploy.policy).Statement : statement.Resource], "arn:aws:ecs:us-east-1:123456789012:service/argos-prod/*")
+    condition     = contains([for statement in jsondecode(aws_iam_role_policy.deploy.policy).Statement : statement.Resource], "arn:aws:ecs:us-east-2:123456789012:service/argos-prod/*")
     error_message = "O papel deve poder reiniciar só os serviços do cluster argos-prod."
   }
 }

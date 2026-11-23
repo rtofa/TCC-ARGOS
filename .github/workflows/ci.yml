@@ -148,7 +148,7 @@ jobs:
       group: deploy-production
       cancel-in-progress: false
     env:
-      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
       CLUSTER: argos-prod
       BACKEND_REPO: argos/backend
       FRONTEND_REPO: argos/frontend
