@@ -8,6 +8,7 @@ import br.com.argos.argos_api.apikey.dto.CreateApiKeyRequest;
 import br.com.argos.argos_api.apikey.dto.CreatedApiKeyResponse;
 import br.com.argos.argos_api.shared.security.AuthenticatedUser;
 import br.com.argos.argos_api.shared.security.CurrentUser;
+import br.com.argos.argos_api.shared.tenant.TenantSession;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -21,6 +22,7 @@ import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -42,12 +44,17 @@ class ApiKeyServiceTest {
     private ApiKeyRepository repository;
     @Mock
     private CurrentUser currentUser;
+    @Mock
+    private TenantSession tenantSession;
 
     private ApiKeyService service;
 
     @BeforeEach
     void setUp() {
-        service = new ApiKeyService(repository, currentUser, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new ApiKeyService(repository, currentUser, Clock.fixed(NOW, ZoneOffset.UTC), tenantSession);
+        // Row-level security only exists in the database; here the session just runs the work.
+        lenient().when(tenantSession.lookup(any())).thenAnswer(call -> call.<Supplier<?>>getArgument(0).get());
+        lenient().when(tenantSession.callAs(any(), any())).thenAnswer(call -> call.<Supplier<?>>getArgument(1).get());
         lenient().when(currentUser.get()).thenReturn(new AuthenticatedUser(ADMIN, ORG));
     }
 

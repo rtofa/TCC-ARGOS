@@ -2,6 +2,7 @@ package br.com.argos.argos_api.identity;
 
 import br.com.argos.argos_api.shared.security.AuthenticatedUser;
 import br.com.argos.argos_api.shared.security.CurrentUser;
+import br.com.argos.argos_api.shared.tenant.TenantSession;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -38,11 +39,14 @@ public class UserManagementService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final CurrentUser currentUser;
+    private final TenantSession tenantSession;
 
-    public UserManagementService(UserRepository userRepository, PasswordEncoder passwordEncoder, CurrentUser currentUser) {
+    public UserManagementService(UserRepository userRepository, PasswordEncoder passwordEncoder, CurrentUser currentUser,
+                                 TenantSession tenantSession) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.currentUser = currentUser;
+        this.tenantSession = tenantSession;
     }
 
     @Transactional(readOnly = true)
@@ -57,7 +61,8 @@ public class UserManagementService {
     public UserSummary create(String name, String rawEmail, String password, Role role) {
         AuthenticatedUser actor = currentUser.get();
         String email = rawEmail.trim().toLowerCase(Locale.ROOT);
-        if (userRepository.findByEmailIgnoreCase(email).isPresent()) {
+        // E-mails are unique across organizations, and row-level security would hide the other ones.
+        if (tenantSession.lookup(() -> userRepository.findByEmailIgnoreCase(email)).isPresent()) {
             throw new DuplicateEmailException(email);
         }
         User user = new User();

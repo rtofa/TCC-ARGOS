@@ -1,0 +1,15 @@
+# Provedores baixados pelo terraform init
+.terraform/
+
+# Estado e variáveis: contêm segredos (senha do banco, chaves de API, chave do JWT)
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json

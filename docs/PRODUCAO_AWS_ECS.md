@@ -2,6 +2,8 @@
 
 Este documento descreve como o Argos roda em produção na AWS com **Amazon ECS (Fargate)**. Ele traz a arquitetura alvo, a configuração de cada peça e a checklist de go-live. A primeira seção lista o que precisa mudar no código antes do deploy.
 
+O Terraform que cria o ambiente (em perfil econômico, ajustável para este desenho completo) e o passo a passo de deploy estão em [infra/README.md](../infra/README.md).
+
 ---
 
 ## 1. Revisão do código para produção
@@ -10,9 +12,9 @@ Este documento descreve como o Argos roda em produção na AWS com **Amazon ECS 
 
 | # | Problema | Por que bloqueia no ECS | Correção proposta |
 |---|---|---|---|
-| B1 | A chave RSA que assina o JWT é gerada em memória a cada inicialização (`identity/config/SecurityConfig`). | Com 2 ou mais tasks atrás do ALB, um token emitido por uma task é recusado pela outra (401 aleatório), e todo deploy desloga todo mundo. | Carregar a chave (par RSA em PEM, ou um segredo HMAC) do **Secrets Manager** por variável de ambiente; manter a geração em memória só como fallback de desenvolvimento. |
-| B2 | Não há endpoint de saúde sem autenticação no backend. | O ALB e o ECS precisam de um `GET` que responda 200 para saber se a task está saudável. | Adicionar `spring-boot-starter-actuator` com `/actuator/health` (liveness e readiness) liberado no Spring Security e só ele exposto. |
-| B3 | Local e nos testes o banco usa o superusuário `postgres`, que **ignora o RLS**. | No RDS a aplicação deve usar um usuário comum, e aí o RLS passa a valer de verdade. Fluxos que não definem o tenant podem falhar ou retornar vazio. | Criar o papel `argos_app` (sem `BYPASSRLS`, sem superusuário) e rodar a suíte completa e um teste manual em staging com ele antes do go-live. |
+| B1 ✅ | **Resolvido.** A chave RSA que assinava o JWT era gerada em memória a cada inicialização. Agora vem de `ARGOS_JWT_PRIVATE_KEY` / `ARGOS_JWT_PUBLIC_KEY` (o Terraform gera o par e guarda no SSM). | Com 2 ou mais tasks atrás do ALB, um token emitido por uma task é recusado pela outra (401 aleatório), e todo deploy desloga todo mundo. | Carregar a chave (par RSA em PEM, ou um segredo HMAC) do **Secrets Manager** por variável de ambiente; manter a geração em memória só como fallback de desenvolvimento. |
+| B2 ✅ | **Resolvido.** `/actuator/health/liveness` e `/actuator/health/readiness` abertos; nada mais do Actuator exposto. | O ALB e o ECS precisam de um `GET` que responda 200 para saber se a task está saudável. | Adicionar `spring-boot-starter-actuator` com `/actuator/health` (liveness e readiness) liberado no Spring Security e só ele exposto. |
+| B3 ✅ | **Resolvido.** Reproduzido com a imagem de produção e um usuário de banco sem superusuário e sem `BYPASSRLS`: cadastro, login, chaves de API, ingestão OTLP e KPIs falhavam. Correção: toda conexão do pool recebe o tenant (`TenantAwareDataSource`, cobre o código com `JdbcTemplate`); login, e-mail único e chave de API usam `TenantSession` com as políticas só de leitura `auth_lookup_policy` (migration V14). `RowLevelSecurityAsAppUserIT` roda esses fluxos sob RLS. | Local e nos testes o banco usa o superusuário `postgres`, que ignora o RLS. No RDS o usuário não é superusuário, e o RLS passa a valer. | No ensaio do deploy, rodar `infra/scripts/smoke-test.py` contra o endereço publicado. |
 | B4 | A telemetria (spans, logs, métricas) não tem retenção. | As tabelas `telemetry_*` crescem sem limite no RDS (custo e performance). | Job de retenção (por exemplo, apagar dados com mais de 7 a 15 dias em lotes) ou particionamento por dia. |
 
 ### 1.2 Importantes (corrigir antes de abrir para clientes)
@@ -208,15 +210,16 @@ O frontend não precisa de variáveis com o ALB roteando `/api/*`.
 
 ## 7. CI/CD (GitHub Actions → ECR → ECS)
 
-1. **Autenticação sem chaves fixas:** provedor OIDC do GitHub no IAM e role `github-deploy`, restrita ao repositório, à branch `main` e aos recursos do Argos.
-2. **Pipeline na `main`:**
-   1. Testes do backend (`./mvnw verify`, com Testcontainers e pgvector) e do frontend (`npm run lint && npm run build`), como no CI atual.
-   2. Build das imagens com tag = SHA do commit; push para o ECR.
-   3. Atualização das task definitions com a nova imagem (`aws-actions/amazon-ecs-render-task-definition`).
-   4. Deploy dos serviços (`aws-actions/amazon-ecs-deploy-task-definition`, com `wait-for-service-stability`).
-   5. Smoke test: `GET /actuator/health` e `GET /`.
-3. **Ambientes:** `staging` (deploy automático) e `production` (aprovação manual no GitHub Environments).
-4. **Rollback:** o circuit breaker do ECS volta sozinho quando as tasks novas não ficam saudáveis; manualmente, apontar o serviço para a task definition anterior.
+Implementado no job `deploy` de [.github/workflows/ci.yml](../.github/workflows/ci.yml) e em [infra/github-deploy](../infra/github-deploy/). A configuração e o comportamento estão em [infra/README.md](../infra/README.md), seção "Deploy automático a cada merge na main".
+
+1. **Autenticação sem chaves fixas:** provedor OIDC do GitHub no IAM e papel `argos-github-deploy`, restrito ao repositório, à branch `main` e aos recursos do Argos (ECR `argos/*`, serviços do cluster `argos-prod`). Fica numa stack separada, que sobrevive ao `terraform destroy` do ambiente.
+2. **Pipeline a cada merge na `main`:**
+   1. Testes do backend (`./mvnw verify`, com Testcontainers e pgvector), do frontend (`npm run lint && npm run build`) e de segurança.
+   2. Quality Gate do Argos (bloqueia com SEV1 aberto, se `ARGOS_API_URL` e `ARGOS_API_KEY` estiverem configurados).
+   3. Build das imagens com tag = SHA curto do commit e `latest`; push para o ECR.
+   4. `aws ecs update-service --force-new-deployment` nos dois serviços e espera estabilizar. O job falha se o circuit breaker tiver voltado para a versão anterior.
+3. **Ambientes:** um só (`prod`), ligado só em apresentações. Desligado, o job avisa e não publica. Para operação contínua: `staging` com deploy automático e `production` com aprovação manual (GitHub Environments), e task definitions com a tag do SHA (`amazon-ecs-render-task-definition`) em vez de `latest`.
+4. **Rollback:** o circuit breaker do ECS volta sozinho quando as tasks novas não ficam saudáveis; manualmente, apontar o serviço para a task definition anterior ou reverter o commit na `main`.
 
 O Argos também pode registrar os próprios deploys: um passo final no pipeline chama `POST /api/webhooks/deploys`, e o Quality Gate (`GET /api/webhooks/deploys/quality-gate`) pode bloquear o deploy de produção.
 
@@ -255,9 +258,9 @@ O Argos também pode registrar os próprios deploys: um passo final no pipeline 
 ## 10. Checklist de go-live
 
 ### Código
-- [ ] B1: chave do JWT vinda do Secrets Manager (nada gerado na subida).
-- [ ] B2: `/actuator/health` com liveness e readiness, liberado sem autenticação.
-- [ ] B3: suíte completa e teste manual com o papel `argos_app` (RLS valendo).
+- [x] B1: chave do JWT vinda de um segredo (nada gerado na subida).
+- [x] B2: `/actuator/health` com liveness e readiness, liberado sem autenticação.
+- [x] B3: fluxos testados com usuário de banco sem superusuário e sem `BYPASSRLS` (RLS valendo).
 - [ ] B4: retenção da telemetria.
 - [ ] I1: advisory lock na indexação da Lia.
 - [ ] Merge na `main` com o CI verde.
@@ -294,8 +297,9 @@ O Argos também pode registrar os próprios deploys: um passo final no pipeline 
 - [ ] Registro DNS no Route 53 apontando para o ALB.
 
 ### CI/CD
-- [ ] OIDC GitHub → AWS e role de deploy restrita.
-- [ ] Workflow de build, push e deploy para staging; produção com aprovação manual.
+- [x] OIDC GitHub → AWS e role de deploy restrita (`infra/github-deploy`).
+- [x] Workflow de build, push e deploy a cada merge na `main`.
+- [ ] Para operação contínua: staging automático e produção com aprovação manual.
 
 ### Observabilidade
 - [ ] Log groups com retenção e logs em JSON (`LOGGING_STRUCTURED_FORMAT_CONSOLE=ecs`).

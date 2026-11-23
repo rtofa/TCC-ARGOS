@@ -1,12 +1,12 @@
 package br.com.argos.argos_api.identity.config;
 
-import com.nimbusds.jose.jwk.JWK;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.ImmutableJWKSet;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
 import jakarta.servlet.DispatcherType;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
@@ -24,11 +24,8 @@ import org.springframework.security.oauth2.server.resource.authentication.JwtAut
 import org.springframework.security.oauth2.server.resource.authentication.JwtGrantedAuthoritiesConverter;
 import org.springframework.security.web.SecurityFilterChain;
 
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
-import java.util.UUID;
 
 @Configuration
 @EnableWebSecurity
@@ -38,12 +35,12 @@ public class SecurityConfig {
     private final RSAPublicKey publicKey;
     private final RSAPrivateKey privateKey;
 
-    public SecurityConfig() throws Exception {
-        KeyPairGenerator keyPairGenerator = KeyPairGenerator.getInstance("RSA");
-        keyPairGenerator.initialize(2048);
-        KeyPair keyPair = keyPairGenerator.generateKeyPair();
-        this.publicKey = (RSAPublicKey) keyPair.getPublic();
-        this.privateKey = (RSAPrivateKey) keyPair.getPrivate();
+    /** Keys from configuration in production (shared by every instance); generated in memory otherwise. */
+    public SecurityConfig(@Value("${argos.security.jwt.private-key:}") String privateKeyPem,
+                          @Value("${argos.security.jwt.public-key:}") String publicKeyPem) {
+        JwtKeys keys = JwtKeys.load(privateKeyPem, publicKeyPem);
+        this.publicKey = keys.publicKey();
+        this.privateKey = keys.privateKey();
     }
 
     @Bean
@@ -55,6 +52,8 @@ public class SecurityConfig {
                         // to a request that was already authorized.
                         .dispatcherTypeMatchers(DispatcherType.ASYNC).permitAll()
                         .requestMatchers("/api/auth/**").permitAll()
+                        // Load balancer and orchestrator probes (only the health endpoint is exposed).
+                        .requestMatchers("/actuator/health", "/actuator/health/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .oauth2ResourceServer(oauth2 -> oauth2.jwt(jwt -> jwt.jwtAuthenticationConverter(jwtAuthenticationConverter())))
@@ -86,7 +85,13 @@ public class SecurityConfig {
 
     @Bean
     public JwtEncoder jwtEncoder() {
-        JWK jwk = new RSAKey.Builder(publicKey).privateKey(privateKey).keyID(UUID.randomUUID().toString()).build();
+        RSAKey jwk;
+        try {
+            // Stable key id (thumbprint): the same on every instance that shares the key pair.
+            jwk = new RSAKey.Builder(publicKey).privateKey(privateKey).keyIDFromThumbprint().build();
+        } catch (com.nimbusds.jose.JOSEException e) {
+            throw new IllegalStateException("Chave do JWT inválida", e);
+        }
         JWKSource<SecurityContext> jwks = new ImmutableJWKSet<>(new JWKSet(jwk));
         return new NimbusJwtEncoder(jwks);
     }

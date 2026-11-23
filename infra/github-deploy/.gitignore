@@ -1,0 +1,10 @@
+# Provedores baixados pelo terraform init
+.terraform/
+
+# Estado local (tem o ID da conta e os ARNs; não há segredos, mas não é para versionar)
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+crash.log
+crash.*.log

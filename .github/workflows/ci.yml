@@ -81,8 +81,13 @@ jobs:
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
+      # Fixada pelo SHA do commit: em março de 2026 as tags desta action foram sobrescritas com código malicioso.
       - name: Varredura de vulnerabilidades OWASP / CVE (Trivy FS)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Sem buscar os BOMs do pom.xml no Maven Central: nos runners do GitHub ele responde 429 (limite de
+          # requisições) e o Trivy encerra com erro fatal, ignorando o exit-code abaixo.
+          TRIVY_OFFLINE_SCAN: true
         with:
           scan-type: 'fs'
           scan-ref: '.'
@@ -97,19 +102,21 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # O GitHub não aceita "secrets" em if: de passo; a chave entra no env do job e o if: testa o env.
+    env:
+      ARGOS_API_KEY: ${{ secrets.ARGOS_API_KEY }}
     steps:
       - uses: actions/checkout@v7
 
       - name: Verificar Quality Gate no Argos antes do deploy
-        if: vars.ARGOS_API_URL != '' && secrets.ARGOS_API_KEY != ''
+        if: vars.ARGOS_API_URL != '' && env.ARGOS_API_KEY != ''
         env:
           ARGOS_API_URL: ${{ vars.ARGOS_API_URL }}
-          ARGOS_API_KEY: ${{ secrets.ARGOS_API_KEY }}
           ARGOS_SERVICE: ${{ vars.ARGOS_SERVICE || 'argos-api' }}
         run: bash scripts/quality-gate.sh
 
       - name: Registrar deploy aprovado no Argos
-        if: success() && vars.ARGOS_API_URL != '' && secrets.ARGOS_API_KEY != ''
+        if: success() && vars.ARGOS_API_URL != '' && env.ARGOS_API_KEY != ''
         run: |
           curl -sf -X POST "${{ vars.ARGOS_API_URL }}/webhooks/deploys" \
             -H "X-API-Key: ${{ secrets.ARGOS_API_KEY }}" \
@@ -122,3 +129,145 @@ jobs:
               \"author\": \"${{ github.actor }}\",
               \"url\": \"${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"
             }"
+
+  deploy:
+    name: Deploy na AWS (ECS Fargate)
+    needs: [quality-gate]
+    # Só um merge na main (ou execução manual a partir dela) publica; pull requests rodam apenas os jobs acima.
+    # Sem a variável AWS_DEPLOY_ROLE_ARN (infra/README.md, "Deploy automático"), o job fica de fora.
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      vars.AWS_DEPLOY_ROLE_ARN != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # OIDC: o GitHub troca um token de curta duração por credenciais temporárias, sem chave guardada.
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION || 'us-east-2' }}
+      CLUSTER: argos-prod
+      BACKEND_REPO: argos/backend
+      FRONTEND_REPO: argos/frontend
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Credenciais temporárias da AWS (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ vars.AWS_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # O ambiente só fica ligado no dia da apresentação (infra/README.md). Desligado, não há repositórios no ECR
+      # nem cluster: o job termina verde, avisando que nada foi publicado.
+      - name: Ambiente ligado?
+        id: state
+        run: |
+          set -euo pipefail
+          echo "tag=${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          if ! uris=$(aws ecr describe-repositories --repository-names "$BACKEND_REPO" "$FRONTEND_REPO" \
+                --query 'repositories[].repositoryUri' --output text 2> ecr-error.txt); then
+            if grep -q RepositoryNotFoundException ecr-error.txt; then
+              echo "::notice title=Deploy pulado::Ambiente desligado na AWS (sem repositórios no ECR). Nada foi publicado."
+              echo "push=false" >> "$GITHUB_OUTPUT"
+              echo "rollout=false" >> "$GITHUB_OUTPUT"
+              exit 0
+            fi
+            cat ecr-error.txt >&2
+            exit 1
+          fi
+          registry=$(echo "$uris" | awk '{print $1}' | cut -d/ -f1)
+          echo "registry=$registry" >> "$GITHUB_OUTPUT"
+          echo "push=true" >> "$GITHUB_OUTPUT"
+
+          rollout=false
+          clusters=$(aws ecs describe-clusters --clusters "$CLUSTER" --query "length(clusters[?status=='ACTIVE'])" --output text)
+          if [ "$clusters" = "1" ]; then
+            services=$(aws ecs describe-services --cluster "$CLUSTER" --services backend frontend \
+              --query "length(services[?status=='ACTIVE'])" --output text)
+            if [ "$services" = "2" ]; then rollout=true; fi
+          fi
+          echo "rollout=$rollout" >> "$GITHUB_OUTPUT"
+          if [ "$rollout" = "false" ]; then
+            echo "::notice title=Só as imagens::Os serviços ainda não existem (primeira instalação): as imagens serão enviadas; depois rode terraform apply."
+          fi
+
+      - name: Login no ECR
+        if: steps.state.outputs.push == 'true'
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Preparar o Buildx
+        if: steps.state.outputs.push == 'true'
+        uses: docker/setup-buildx-action@v4
+
+      - name: Imagem do backend
+        if: steps.state.outputs.push == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: backend
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.state.outputs.registry }}/${{ env.BACKEND_REPO }}:${{ steps.state.outputs.tag }}
+            ${{ steps.state.outputs.registry }}/${{ env.BACKEND_REPO }}:latest
+          cache-from: type=gha,scope=backend
+          cache-to: type=gha,scope=backend,mode=max
+
+      - name: Imagem do frontend
+        if: steps.state.outputs.push == 'true'
+        uses: docker/build-push-action@v7
+        with:
+          context: frontend
+          push: true
+          provenance: false
+          tags: |
+            ${{ steps.state.outputs.registry }}/${{ env.FRONTEND_REPO }}:${{ steps.state.outputs.tag }}
+            ${{ steps.state.outputs.registry }}/${{ env.FRONTEND_REPO }}:latest
+          cache-from: type=gha,scope=frontend
+          cache-to: type=gha,scope=frontend,mode=max
+
+      # As task definitions usam a tag latest: um novo deploy sobe tasks com as imagens que acabaram de ser enviadas.
+      # Se as tasks novas não ficarem saudáveis, o circuit breaker do ECS volta para a versão anterior; o passo
+      # confere isso pelo ID do deploy e falha nesse caso, em vez de terminar verde com a versão antiga no ar.
+      - name: Atualizar os serviços no ECS
+        if: steps.state.outputs.rollout == 'true'
+        run: |
+          set -euo pipefail
+          declare -A started
+          for service in backend frontend; do
+            started[$service]=$(aws ecs update-service --cluster "$CLUSTER" --service "$service" --force-new-deployment \
+              --query "service.deployments[?status=='PRIMARY'] | [0].id" --output text)
+            echo "$service: deploy ${started[$service]} iniciado"
+          done
+          aws ecs wait services-stable --cluster "$CLUSTER" --services backend frontend
+          failed=0
+          for service in backend frontend; do
+            read -r id state < <(aws ecs describe-services --cluster "$CLUSTER" --services "$service" \
+              --query "services[0].deployments[?status=='PRIMARY'] | [0].[id, rolloutState]" --output text)
+            if [ "$id" != "${started[$service]}" ] || [ "$state" = "FAILED" ]; then
+              echo "::error title=Deploy do $service falhou::A versão nova não ficou saudável e o ECS voltou para a anterior. Logs: aws logs tail /ecs/$CLUSTER/$service"
+              failed=1
+            fi
+          done
+          exit "$failed"
+
+      - name: Resumo
+        if: always() && steps.state.outputs.push == 'true'
+        env:
+          TAG: ${{ steps.state.outputs.tag }}
+          ROLLOUT: ${{ steps.state.outputs.rollout }}
+        run: |
+          url=$(aws elbv2 describe-load-balancers --names "$CLUSTER" --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || true)
+          {
+            echo "### Deploy na AWS"
+            echo "- Versão: \`$TAG\` (imagens com essa tag e \`latest\` no ECR)"
+            if [ "$ROLLOUT" = "true" ]; then
+              echo "- Serviços backend e frontend atualizados no cluster \`$CLUSTER\`"
+            else
+              echo "- Só as imagens: os serviços ainda não existem"
+            fi
+            if [ -n "$url" ] && [ "$url" != "None" ]; then echo "- Console: http://$url"; fi
+          } >> "$GITHUB_STEP_SUMMARY"
