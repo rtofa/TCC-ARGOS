@@ -55,13 +55,3 @@ output "db_final_snapshot_name" {
   description = "Nome do snapshot que o destroy vai criar (use em db_snapshot_identifier na próxima vez que ligar)."
   value       = var.db_skip_final_snapshot ? "(desligado: db_skip_final_snapshot = true)" : aws_db_instance.this.final_snapshot_identifier
 }
-
-output "demo_instance_id" {
-  description = "ID da instância EC2 da OpenTelemetry Demo na AWS (para acesso via SSM Session Manager)."
-  value       = var.enable_demo ? aws_instance.demo[0].id : "(desligado: enable_demo = false)"
-}
-
-output "demo_shop_url" {
-  description = "URL pública da Loja Demo (Astronomy Shop) na AWS."
-  value       = var.enable_demo ? "http://${aws_instance.demo[0].public_ip}:8080" : "(desligado: enable_demo = false)"
-}

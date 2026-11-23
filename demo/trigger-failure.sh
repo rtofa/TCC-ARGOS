@@ -32,7 +32,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 if [ "$ACTION" != "reset" ] && [ -f "$SCRIPT_DIR/generated/argos.env" ]; then
   . "$SCRIPT_DIR/generated/argos.env"
   if [ -n "${ARGOS_API_KEY:-}" ]; then
-    curl -sf -X POST "${ARGOS_URL:-http://localhost:8081}/api/webhooks/deploys" \
+    curl -sf -X POST http://localhost:8081/api/webhooks/deploys \
       -H "X-API-Key: $ARGOS_API_KEY" -H 'Content-Type: application/json' \
       -d "{\"service\":\"$SERVICE\",\"version\":\"v1.4.2\",\"environment\":\"production\",\"commitSha\":\"a8f4c21e9b0d\",\"author\":\"ci-bot\",\"description\":\"Release automatica antes de $FLAG\"}" >/dev/null || true
     echo "Deploy v1.4.2 registrado no servico '$SERVICE' para correlacao DORA."
