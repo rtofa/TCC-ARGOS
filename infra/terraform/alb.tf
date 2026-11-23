@@ -12,6 +12,9 @@ resource "aws_lb" "this" {
   security_groups    = [aws_security_group.alb.id]
   subnets            = aws_subnet.public[*].id
   idle_timeout       = 130
+
+  # Descarta cabeçalhos com nome inválido em vez de repassá-los (proteção contra request smuggling).
+  drop_invalid_header_fields = true
 }
 
 resource "aws_lb_target_group" "backend" {

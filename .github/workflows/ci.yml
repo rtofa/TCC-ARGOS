@@ -81,8 +81,13 @@ jobs:
         working-directory: frontend
         run: npm audit --omit=dev --audit-level=high
 
+      # Fixada pelo SHA do commit: em março de 2026 as tags desta action foram sobrescritas com código malicioso.
       - name: Varredura de vulnerabilidades OWASP / CVE (Trivy FS)
-        uses: aquasecurity/trivy-action@master
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        env:
+          # Sem buscar os BOMs do pom.xml no Maven Central: nos runners do GitHub ele responde 429 (limite de
+          # requisições) e o Trivy encerra com erro fatal, ignorando o exit-code abaixo.
+          TRIVY_OFFLINE_SCAN: true
         with:
           scan-type: 'fs'
           scan-ref: '.'
