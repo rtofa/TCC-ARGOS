@@ -278,7 +278,15 @@ jobs:
           TAG: ${{ steps.state.outputs.tag }}
           ROLLOUT: ${{ steps.state.outputs.rollout }}
         run: |
-          url=$(aws elbv2 describe-load-balancers --names "$CLUSTER" --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || true)
+          # Endereço público: o HTTPS do CloudFront (infra/terraform/cloudfront.tf) ou, sem ele, o ALB.
+          url=$(aws cloudfront list-distributions --output text \
+            --query "DistributionList.Items[?Comment=='$CLUSTER: HTTPS na frente do ALB'].DomainName | [0]" 2>/dev/null || true)
+          if [ -n "$url" ] && [ "$url" != "None" ]; then
+            url="https://$url"
+          else
+            url=$(aws elbv2 describe-load-balancers --names "$CLUSTER" --query 'LoadBalancers[0].DNSName' --output text 2>/dev/null || true)
+            if [ -n "$url" ] && [ "$url" != "None" ]; then url="http://$url"; else url=""; fi
+          fi
           {
             echo "### Deploy na AWS"
             echo "- Versão: \`$TAG\` (imagens com essa tag e \`latest\` no ECR)"
@@ -287,5 +295,5 @@ jobs:
             else
               echo "- Só as imagens: os serviços ainda não existem"
             fi
-            if [ -n "$url" ] && [ "$url" != "None" ]; then echo "- Console: http://$url"; fi
+            if [ -n "$url" ]; then echo "- Console: $url"; fi
           } >> "$GITHUB_STEP_SUMMARY"

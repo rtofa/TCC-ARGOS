@@ -77,20 +77,28 @@ resource "aws_security_group" "alb" {
   description = "ALB: HTTP/HTTPS da internet"
   vpc_id      = aws_vpc.this.id
 
-  ingress {
-    description = "HTTP"
-    from_port   = 80
-    to_port     = 80
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  # Com CloudFront, o ALB só aceita os servidores de origem do CloudFront: o endereço HTTP direto deixa de responder
+  # e todo acesso passa pelo HTTPS. Sem CloudFront (domínio próprio ou desligado), aceita a internet.
+  dynamic "ingress" {
+    for_each = local.use_cloudfront ? [] : [80, 443]
+    content {
+      description = ingress.value == 80 ? "HTTP" : "HTTPS"
+      from_port   = ingress.value
+      to_port     = ingress.value
+      protocol    = "tcp"
+      cidr_blocks = ["0.0.0.0/0"]
+    }
   }
 
-  ingress {
-    description = "HTTPS"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]
+  dynamic "ingress" {
+    for_each = local.use_cloudfront ? [80] : []
+    content {
+      description     = "HTTP vindo do CloudFront"
+      from_port       = ingress.value
+      to_port         = ingress.value
+      protocol        = "tcp"
+      prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront[0].id]
+    }
   }
 
   egress {

@@ -79,6 +79,15 @@ mock_provider "aws" {
   mock_resource "aws_db_instance" {
     defaults = { address = "argos-prod.abc.us-east-1.rds.amazonaws.com" }
   }
+  mock_resource "aws_cloudfront_distribution" {
+    defaults = {
+      arn         = "arn:aws:cloudfront::123456789012:distribution/EMOCK"
+      domain_name = "d111111abcdef8.cloudfront.net"
+    }
+  }
+  mock_data "aws_ec2_managed_prefix_list" {
+    defaults = { id = "pl-3b927c52" }
+  }
 }
 
 mock_provider "random" {}
@@ -133,6 +142,32 @@ run "economico_sem_dominio" {
     condition     = length(aws_budgets_budget.monthly) == 0
     error_message = "Sem e-mail não há orçamento."
   }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.this) == 1 && output.app_url == "https://d111111abcdef8.cloudfront.net"
+    error_message = "Sem domínio, o console deve ficar em HTTPS pelo CloudFront."
+  }
+
+  assert {
+    condition     = strcontains(aws_ecs_task_definition.backend.container_definitions, "https://d111111abcdef8.cloudfront.net")
+    error_message = "O backend deve conhecer o endereço HTTPS (links de e-mail e notificações)."
+  }
+
+  assert {
+    condition     = alltrue([for rule in aws_security_group.alb.ingress : length(coalesce(rule.cidr_blocks, [])) == 0 && length(coalesce(rule.prefix_list_ids, [])) == 1])
+    error_message = "Com CloudFront, o ALB só aceita o CloudFront (nada de 0.0.0.0/0)."
+  }
+
+  assert {
+    condition = alltrue([for behavior in aws_cloudfront_distribution.this[0].ordered_cache_behavior :
+    behavior.compress == false && behavior.viewer_protocol_policy == "https-only" if behavior.path_pattern == "/api/*"])
+    error_message = "A API passa sem compressão (streaming da Lia) e só por HTTPS."
+  }
+
+  assert {
+    condition     = toset(aws_cloudfront_cache_policy.api[0].parameters_in_cache_key_and_forwarded_to_origin[0].headers_config[0].headers[0].items) == toset(["Authorization", "X-API-Key"])
+    error_message = "Authorization e X-API-Key precisam chegar ao backend também em GET."
+  }
 }
 
 run "com_dominio_chaves_e_email" {
@@ -178,6 +213,11 @@ run "com_dominio_chaves_e_email" {
   assert {
     condition     = length(aws_budgets_budget.monthly) == 1
     error_message = "Com e-mail deve haver orçamento."
+  }
+
+  assert {
+    condition     = length(aws_cloudfront_distribution.this) == 0 && output.app_url == "https://argos.exemplo.com.br"
+    error_message = "Com domínio próprio, o HTTPS fica no ALB e o CloudFront não é criado."
   }
 }
 

@@ -5,8 +5,8 @@ Esta pasta cria e publica o Argos na AWS com dois comandos repetíveis: `terrafo
 ## O que é criado
 
 ```
-Internet ──► ALB (HTTP, ou HTTPS com domínio) ──┬── /api/*  ──► ECS Fargate: backend (Spring Boot, porta 8081)
-                                                └── resto   ──► ECS Fargate: frontend (nginx com o SPA)
+Internet ──HTTPS──► CloudFront (*.cloudfront.net) ──► ALB ──┬── /api/*  ──► ECS Fargate: backend (Spring Boot, porta 8081)
+                    (ou HTTPS direto no ALB, com domínio)   └── resto   ──► ECS Fargate: frontend (nginx com o SPA)
 backend ──► RDS PostgreSQL 15 + pgvector (subnet privada, sem acesso pela internet)
 backend ──► Groq / OpenAI / Cohere / Slack / Discord (saída pela internet)
 ```
@@ -14,14 +14,15 @@ backend ──► Groq / OpenAI / Cohere / Slack / Discord (saída pela internet
 | Recurso | Configuração padrão |
 |---|---|
 | VPC | 2 zonas; subnets públicas (ALB e tasks) e privadas (RDS); **sem NAT Gateway** para economizar |
-| ALB | Idle timeout de 130 s (streaming da Lia); `/api/*` → backend, resto → frontend |
+| CloudFront | HTTPS com o certificado `*.cloudfront.net`, sem domínio próprio (sem o aviso "Não seguro"); API e streaming da Lia sem cache e sem compressão, JS/CSS em cache; dentro da cota gratuita permanente |
+| ALB | Só aceita o CloudFront; idle timeout de 130 s; `/api/*` e `/actuator/health` → backend, resto → frontend |
 | ECS Fargate | Backend 0,5 vCPU / 1 GB (1 task); frontend 0,25 vCPU / 0,5 GB (1 task); deploy com rollback automático |
 | RDS | PostgreSQL 15, `db.t4g.micro`, 20 GB gp3, criptografado, TLS obrigatório, backup de 1 dia |
 | Segredos | SSM Parameter Store (SecureString): senha do banco, chave do JWT (gerada pelo Terraform), chaves de IA e SMTP |
 | ECR | Repositórios `argos/backend` e `argos/frontend` (scan on push, mantém 10 imagens) |
 | CloudWatch | Logs dos dois serviços (14 dias) |
 | Orçamento | Alerta por e-mail em 80% do gasto real e 100% do previsto (se `alert_email` for informado) |
-| Domínio (opcional) | Certificado ACM + registro no Route 53 + HTTPS |
+| Domínio (opcional) | Certificado ACM + registro no Route 53 + HTTPS direto no ALB (aí o CloudFront não é criado) |
 
 As tasks ficam em subnets públicas com IP público para sair à internet sem NAT Gateway (cerca de 32 USD/mês). Os security groups só aceitam conexões vindas do ALB, e o banco fica em subnet privada.
 

@@ -96,7 +96,9 @@ resource "aws_lb_listener" "https" {
 
 locals {
   app_listener_arn = local.use_https ? aws_lb_listener.https[0].arn : aws_lb_listener.http.arn
-  app_url          = local.use_https ? "https://${var.domain_name}" : "http://${aws_lb.this.dns_name}"
+  app_url = (local.use_https ? "https://${var.domain_name}"
+    : local.use_cloudfront ? "https://${aws_cloudfront_distribution.this[0].domain_name}"
+  : "http://${aws_lb.this.dns_name}")
 }
 
 resource "aws_lb_listener_rule" "api" {
