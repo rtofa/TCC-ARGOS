@@ -16,7 +16,7 @@ const MAX_HISTORY = 6
 
 /**
  * Lia, the support assistant, on every page: a floating question-mark bubble that opens a chat answered from the
- * official documentation (streamed, with cited sources). It lives in the layout, so the conversation survives
+ * official documentation (streamed). It lives in the layout, so the conversation survives
  * navigation.
  */
 export default function HelpAssistant({ isAdmin }) {
@@ -73,7 +73,7 @@ export default function HelpAssistant({ isAdmin }) {
     setMessages((all) => [
       ...all,
       { id: userId, role: 'user', text: asked, status: 'done' },
-      { id, role: 'assistant', text: '', status: 'streaming', sources: [] },
+      { id, role: 'assistant', text: '', status: 'streaming' },
     ])
     setQuestion('')
     setBusy(true)
@@ -89,7 +89,7 @@ export default function HelpAssistant({ isAdmin }) {
               case 'token':
                 return { ...m, text: m.text + data.text }
               case 'done':
-                return { ...m, status: 'done', text: data.answer, sources: data.sources }
+                return { ...m, status: 'done', text: data.answer }
               case 'error':
                 return { ...m, status: 'error', error: data.message }
               default:
@@ -249,14 +249,8 @@ function LiaAvatar({ size }) {
 }
 
 function LiaMessage({ message }) {
-  const [highlight, setHighlight] = useState(null)
   const thinking = message.status === 'streaming' && !message.text
   const streaming = message.status === 'streaming' && Boolean(message.text)
-
-  function cite(index) {
-    setHighlight(index)
-    document.getElementById(`src-${message.id}-${index}`)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-  }
 
   return (
     <div className="lia-row lia-row-assistant">
@@ -279,28 +273,7 @@ function LiaMessage({ message }) {
             {message.error || 'Algo deu errado.'} Tente de novo em instantes.
           </p>
         ) : (
-          <AnswerText text={message.text} onCite={cite} />
-        )}
-        {message.status === 'done' && message.sources?.length > 0 && (
-          <div className="lia-sources">
-            <p className="lia-sources-title">Fontes</p>
-            <ol>
-              {message.sources.map((source) => (
-                <li
-                  key={source.index}
-                  id={`src-${message.id}-${source.index}`}
-                  className={highlight === source.index ? 'is-highlighted' : undefined}
-                  title={source.snippet}
-                >
-                  <span className="lia-source-index">{source.index}</span>
-                  <span>
-                    {source.document}
-                    {source.section && <span className="lia-source-section"> › {source.section}</span>}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          </div>
+          <AnswerText text={message.text} />
         )}
       </div>
     </div>

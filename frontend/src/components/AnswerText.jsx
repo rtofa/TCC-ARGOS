@@ -1,9 +1,9 @@
 /**
- * Renders an assistant answer: paragraphs, bulleted and numbered lists, code blocks, **bold**, `code` and citations
- * [n] as small buttons that point to the sources. Built from React elements only (no HTML injection).
+ * Renders an assistant answer: paragraphs, bulleted and numbered lists, code blocks, **bold** and `code`.
+ * Built from React elements only (no HTML injection).
  */
-export default function AnswerText({ text, onCite }) {
-  return <div className="answer-text">{blocks(text).map((block, i) => renderBlock(block, i, onCite))}</div>
+export default function AnswerText({ text }) {
+  return <div className="answer-text">{blocks(text).map((block, i) => renderBlock(block, i))}</div>
 }
 
 function blocks(text) {
@@ -57,7 +57,7 @@ function blocks(text) {
   return result
 }
 
-function renderBlock(block, key, onCite) {
+function renderBlock(block, key) {
   switch (block.type) {
     case 'code':
       return (
@@ -71,7 +71,7 @@ function renderBlock(block, key, onCite) {
       return (
         <List key={key}>
           {block.lines.map((item, i) => (
-            <li key={i}>{inline(item, onCite)}</li>
+            <li key={i}>{inline(item)}</li>
           ))}
         </List>
       )
@@ -79,29 +79,31 @@ function renderBlock(block, key, onCite) {
     case 'heading':
       return (
         <p key={key} className="answer-heading">
-          {inline(block.lines[0], onCite)}
+          {inline(block.lines[0])}
         </p>
       )
     default:
-      return <p key={key}>{inline(block.lines.join(' '), onCite)}</p>
+      return <p key={key}>{inline(block.lines.join(' '))}</p>
   }
 }
 
-const INLINE = /(\*\*[^*]+\*\*|`[^`]+`|\[\d{1,2}\])/g
+const INLINE = /(\*\*[^*]+\*\*|`[^`]+`)/g
+const INLINE_CODE = /(`[^`]+`)/g
+// Citation markers like [1], [2] or [1, 3]: the backend uses them to check that the answer is grounded in the
+// documentation, but end users don't need them. Removed from the text, never from inline `code` (x[1] is code).
+const CITATION = /\s*\[\d{1,2}(?:\s*[,;]\s*\d{1,2})*\]/g
 
-function inline(text, onCite) {
-  return text.split(INLINE).filter(Boolean).map((part, i) => {
+function withoutCitations(text) {
+  return text
+    .split(INLINE_CODE)
+    .map((part) => (part.startsWith('`') && part.endsWith('`') ? part : part.replace(CITATION, '')))
+    .join('')
+}
+
+function inline(text) {
+  return withoutCitations(text).split(INLINE).filter(Boolean).map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) return <strong key={i}>{part.slice(2, -2)}</strong>
     if (part.startsWith('`') && part.endsWith('`')) return <code key={i} className="mono">{part.slice(1, -1)}</code>
-    const citation = /^\[(\d{1,2})\]$/.exec(part)
-    if (citation) {
-      const index = Number(citation[1])
-      return (
-        <button key={i} type="button" className="citation" onClick={() => onCite?.(index)} title={`Ver fonte ${index}`}>
-          {index}
-        </button>
-      )
-    }
     return part
   })
 }
