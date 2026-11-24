@@ -9,11 +9,13 @@
 
 .EXAMPLE
   .\infra\scripts\demo-failure.ps1 -Status
+  .\infra\scripts\demo-failure.ps1 -Flag caos            # várias falhas reais ao mesmo tempo e mais tráfego
+  .\infra\scripts\demo-failure.ps1 -Flag caos -Reset
   .\infra\scripts\demo-failure.ps1 -Flag productCatalogFailure
   .\infra\scripts\demo-failure.ps1 -Flag productCatalogFailure -Reset
 #>
 param(
-    [ValidateSet("cartFailure", "productCatalogFailure", "paymentFailure", "adFailure")]
+    [ValidateSet("caos", "cartFailure", "productCatalogFailure", "paymentFailure", "adFailure")]
     [string]$Flag = "productCatalogFailure",
     [switch]$Reset,
     [switch]$Status
