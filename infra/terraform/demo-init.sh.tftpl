@@ -1,0 +1,62 @@
+#!/bin/bash
+# Inicialização do EC2 da OpenTelemetry Demo (renderizado pelo Terraform em demo.tf).
+# Log completo: /var/log/argos-demo-init.log (aws ssm start-session, ou infra/scripts/demo-failure.ps1 -Status).
+set -euxo pipefail
+exec > >(tee /var/log/argos-demo-init.log | logger -t argos-demo) 2>&1
+
+# 2 GB de swap de folga para os picos de memória na subida dos ~20 containers.
+if [ ! -f /swapfile ]; then
+  fallocate -l 2G /swapfile
+  chmod 600 /swapfile
+  mkswap /swapfile
+  swapon /swapfile
+  echo '/swapfile none swap sw 0 0' >> /etc/fstab
+fi
+
+dnf install -y docker git jq
+systemctl enable --now docker
+mkdir -p /usr/local/lib/docker/cli-plugins
+curl -fsSL --retry 5 --retry-delay 5 "${compose_plugin}" -o /usr/local/lib/docker/cli-plugins/docker-compose
+chmod +x /usr/local/lib/docker/cli-plugins/docker-compose
+
+# Arquivos da integração com o Argos (template do Collector, compose.argos.yaml, trigger-failure.sh).
+rm -rf /opt/argos
+git clone --depth 1 --branch "${repo_branch}" "${repo_url}" /opt/argos
+
+ARGOS_URL="${argos_url}"
+git clone --quiet --depth 1 --branch "${otel_demo_tag}" \
+  https://github.com/open-telemetry/opentelemetry-demo.git /opt/argos/demo/opentelemetry-demo
+
+# Chave de API da organização no SSM (o EC2 tem permissão só para ler este parâmetro). Rastreio (-x) desligado
+# daqui até a chave estar gravada, para ela não aparecer no log.
+set +x
+API_KEY=""
+for attempt in $(seq 1 10); do
+  API_KEY=$(aws ssm get-parameter --region "${region}" --name "${key_parameter}" --with-decryption \
+    --query Parameter.Value --output text) && break
+  sleep 10
+done
+[ -n "$API_KEY" ] || { echo "Chave de API do Argos indisponível no SSM" >&2; exit 1; }
+
+mkdir -p /opt/argos/demo/generated
+umask 077
+printf 'ARGOS_API_KEY=%s\nARGOS_URL=%s\n' "$API_KEY" "$ARGOS_URL" > /opt/argos/demo/generated/argos.env
+
+# Collector: pipelines paralelos que mandam uma cópia da telemetria ao Argos pelo HTTPS.
+sed -e "s|__ARGOS_API_KEY__|$API_KEY|g" \
+    -e "s|http://host.docker.internal:8081/api/webhooks/otlp|$ARGOS_URL/api/webhooks/otlp|g" \
+    /opt/argos/demo/otelcol-config-extras.yml.template \
+  > /opt/argos/demo/opentelemetry-demo/src/otel-collector/otelcol-config-extras.yml
+umask 022
+unset API_KEY
+echo "Chave de API gravada (generated/argos.env e config do Collector, só leitura do root)"
+set -x
+
+cd /opt/argos/demo/opentelemetry-demo
+for attempt in 1 2 3; do
+  docker compose --env-file .env --env-file .env.override \
+    -f compose.yaml -f /opt/argos/demo/compose.argos.yaml up -d --remove-orphans && break
+  sleep 30
+done
+docker compose --env-file .env --env-file .env.override -f compose.yaml -f /opt/argos/demo/compose.argos.yaml ps
+echo "OpenTelemetry Demo no ar, enviando ao Argos em $ARGOS_URL"

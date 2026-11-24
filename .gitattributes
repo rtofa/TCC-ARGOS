@@ -1,2 +1,4 @@
 # Scripts de shell precisam de fim de linha LF, inclusive no Windows (rodam dentro de containers Linux).
 *.sh text eol=lf
+# Templates do Terraform que viram scripts de shell no EC2 (user_data) também precisam de LF.
+*.tftpl text eol=lf

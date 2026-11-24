@@ -23,6 +23,7 @@ backend ──► Groq / OpenAI / Cohere / Slack / Discord (saída pela internet
 | CloudWatch | Logs dos dois serviços (14 dias) |
 | Orçamento | Alerta por e-mail em 80% do gasto real e 100% do previsto (se `alert_email` for informado) |
 | Domínio (opcional) | Certificado ACM + registro no Route 53 + HTTPS direto no ALB (aí o CloudFront não é criado) |
+| Demo (opcional) | EC2 `t3.medium` com a OpenTelemetry Demo mandando dados à sua organização (veja "Dados de demonstração") |
 
 As tasks ficam em subnets públicas com IP público para sair à internet sem NAT Gateway (cerca de 32 USD/mês). Os security groups só aceitam conexões vindas do ALB, e o banco fica em subnet privada.
 
@@ -145,6 +146,28 @@ O job **Deploy na AWS** do workflow de CI ([.github/workflows/ci.yml](../.github
 3. Para publicar sem esperar um merge, use **Actions > CI > Run workflow**, na `main`.
 
 Na primeira instalação, o workflow também substitui o `deploy.ps1 -PushOnly` (passo 2): depois do `terraform apply -target=...` do ECR, rode **Run workflow**. Ele envia as imagens sem build na sua máquina. Depois, rode o `terraform apply` completo.
+
+## Dados de demonstração (OpenTelemetry Demo no EC2)
+
+O Argos não gera dados sozinho: ele recebe a telemetria das aplicações monitoradas. Para a produção ter dados sem depender de nenhum PC ligado, um EC2 roda a [OpenTelemetry Demo](https://github.com/open-telemetry/opentelemetry-demo) 3.1.0 (a loja Astronomy Shop, com ~20 microsserviços instrumentados com OpenTelemetry e um gerador de carga). O Collector dela manda uma cópia de traces, logs e métricas ao Argos pelo HTTPS.
+
+1. No console do Argos, entre na sua organização, abra **Chaves de API**, gere uma chave (por exemplo "OpenTelemetry Demo") e copie.
+2. No `terraform.tfvars`, preencha `demo_argos_api_key = "<a chave>"` e rode `terraform apply`. A chave vai para o SSM; o EC2 a lê ao ligar, e ela não aparece no `user_data`.
+3. Em 5 a 10 minutos (o EC2 baixa ~20 imagens), os serviços aparecem em **Telemetria**. Para acompanhar: `.\infra\scripts\demo-failure.ps1 -Status`.
+4. Para mostrar a detecção automática de incidentes, ligue uma falha real e depois desligue:
+
+   ```powershell
+   .\infra\scripts\demo-failure.ps1 -Flag productCatalogFailure
+   .\infra\scripts\demo-failure.ps1 -Flag productCatalogFailure -Reset
+   ```
+
+   As falhas disponíveis são `cartFailure`, `productCatalogFailure`, `paymentFailure` e `adFailure`. O script usa o SSM Run Command, sem SSH nem porta aberta.
+
+Detalhes:
+- Custo: cerca de 0,05 USD por hora (`t3.medium`, disco e IP). A demo 3.1.0 já vem sem Jaeger, Grafana, Prometheus e OpenSearch (o Argos faz esse papel) e cabe em 4 GB; se faltar memória, use `demo_instance_type = "t3.large"`.
+- O `terraform destroy` apaga o EC2 junto. A chave fica guardada no banco, então continua valendo depois de restaurar o snapshot.
+- A loja não fica aberta para a internet. Para abri-la (porta 8080, com o gerador de carga em `/loadgen/` e as flags em `/feature`), coloque o seu IP em `demo_allowed_cidrs = ["<seu IP>/32"]`.
+- O gerador de carga manda dados sem parar, e o banco ainda não apaga telemetria antiga: não deixe a demo ligada por semanas.
 
 ## Mudar configuração (modelos, chaves, capacidade)
 

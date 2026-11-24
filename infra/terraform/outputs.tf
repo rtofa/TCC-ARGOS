@@ -8,6 +8,11 @@ output "alb_dns_name" {
   value       = aws_lb.this.dns_name
 }
 
+output "demo_instance_id" {
+  description = "EC2 da OpenTelemetry Demo (vazio sem demo). Falhas e status: infra/scripts/demo-failure.ps1."
+  value       = local.use_demo ? aws_instance.demo[0].id : ""
+}
+
 output "cloudfront_domain" {
   description = "Domínio HTTPS do CloudFront (vazio com domínio próprio ou com o CloudFront desligado)."
   value       = local.use_cloudfront ? aws_cloudfront_distribution.this[0].domain_name : ""

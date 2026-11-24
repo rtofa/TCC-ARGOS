@@ -88,6 +88,12 @@ mock_provider "aws" {
   mock_data "aws_ec2_managed_prefix_list" {
     defaults = { id = "pl-3b927c52" }
   }
+  mock_data "aws_ssm_parameter" {
+    defaults = { value = "ami-0123456789abcdef0" }
+  }
+  mock_resource "aws_iam_instance_profile" {
+    defaults = { arn = "arn:aws:iam::123456789012:instance-profile/argos-prod-demo" }
+  }
 }
 
 mock_provider "random" {}
@@ -96,11 +102,16 @@ mock_provider "tls" {}
 run "economico_sem_dominio" {
   command = apply # provedores simulados: nada é criado na AWS
 
+  # O terraform test também lê o terraform.tfvars local: cada valor que o cenário verifica é fixado aqui.
   variables {
     llm_routes = {
       primary = { base_url = "https://api.groq.com/openai/v1", model = "openai/gpt-oss-120b", reasoning_effort = "low" }
     }
-    llm_api_keys = { primary = "gsk_teste" }
+    llm_api_keys       = { primary = "gsk_teste" }
+    openai_api_key     = ""
+    cohere_api_key     = ""
+    alert_email        = ""
+    demo_argos_api_key = ""
   }
 
   assert {
@@ -167,6 +178,54 @@ run "economico_sem_dominio" {
   assert {
     condition     = toset(aws_cloudfront_cache_policy.api[0].parameters_in_cache_key_and_forwarded_to_origin[0].headers_config[0].headers[0].items) == toset(["Authorization", "X-API-Key"])
     error_message = "Authorization e X-API-Key precisam chegar ao backend também em GET."
+  }
+
+  assert {
+    condition     = length(aws_instance.demo) == 0 && output.demo_instance_id == ""
+    error_message = "Sem chave de API da demo, o EC2 da demo não é criado."
+  }
+}
+
+run "demo_opentelemetry_no_ec2" {
+  command = apply
+
+  variables {
+    demo_argos_api_key = "argos_chave_de_teste"
+  }
+
+  assert {
+    condition     = length(aws_instance.demo) == 1 && aws_instance.demo[0].instance_type == "t3.medium"
+    error_message = "Com a chave, a demo sobe num t3.medium."
+  }
+
+  assert {
+    condition     = aws_instance.demo[0].metadata_options[0].http_tokens == "required"
+    error_message = "O EC2 da demo exige IMDSv2."
+  }
+
+  assert {
+    condition     = length(aws_security_group.demo[0].ingress) == 0
+    error_message = "Por padrão, nenhuma porta da demo fica aberta para a internet."
+  }
+
+  assert {
+    condition     = !strcontains(local.demo_user_data, "argos_chave_de_teste") && strcontains(local.demo_user_data, "/argos/prod/demo/argos-api-key")
+    error_message = "A chave fica no SSM: o user_data só leva o nome do parâmetro, nunca o valor."
+  }
+
+  assert {
+    condition     = strcontains(local.demo_user_data, "https://d111111abcdef8.cloudfront.net")
+    error_message = "A demo manda os dados ao Argos pelo endereço HTTPS."
+  }
+
+  assert {
+    condition     = !strcontains(local.demo_user_data, "\r") && startswith(local.demo_user_data, "#!/bin/bash\n")
+    error_message = "O script do EC2 precisa de quebras de linha LF (bash quebra com \\r)."
+  }
+
+  assert {
+    condition     = aws_ssm_parameter.demo_argos_api_key[0].type == "SecureString"
+    error_message = "A chave da demo é guardada como SecureString."
   }
 }
 

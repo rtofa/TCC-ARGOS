@@ -40,6 +40,46 @@ variable "route53_zone_id" {
   default     = ""
 }
 
+variable "enable_demo" {
+  description = "Cria o EC2 da OpenTelemetry Demo (dados de demonstração) quando demo_argos_api_key estiver preenchida."
+  type        = bool
+  default     = true
+}
+
+variable "demo_argos_api_key" {
+  description = <<-EOT
+    Chave de API (X-API-Key) da organização que vai receber os dados da demo. Gere em Chaves de API no console do
+    Argos. Vazia = sem demo. A chave fica no banco, então continua válida depois de um destroy com snapshot.
+  EOT
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "demo_instance_type" {
+  description = "Tipo do EC2 da demo. t3.medium (4 GB) cabe a demo enxuta; use t3.large se faltar memória."
+  type        = string
+  default     = "t3.medium"
+}
+
+variable "demo_allowed_cidrs" {
+  description = "IPs (CIDR) que podem abrir a loja e as feature flags na porta 8080. Vazio = nenhum (falhas via SSM)."
+  type        = list(string)
+  default     = []
+}
+
+variable "demo_repo_url" {
+  description = "Repositório de onde o EC2 baixa os arquivos de demo/ (template do Collector, compose.argos.yaml)."
+  type        = string
+  default     = "https://github.com/rtofa/TCC-ARGOS.git"
+}
+
+variable "demo_repo_branch" {
+  description = "Branch desse repositório."
+  type        = string
+  default     = "main"
+}
+
 variable "enable_cloudfront" {
   description = <<-EOT
     Sem domínio próprio, coloca o CloudFront na frente do ALB para ter HTTPS (certificado *.cloudfront.net, sem o

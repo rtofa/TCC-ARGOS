@@ -45,6 +45,10 @@ cohere_api_key = ""
 # smtp_password = "..."
 # mail_from     = "noreply@seudominio.com.br"
 
+# Dados de demonstração: OpenTelemetry Demo num EC2 t3.medium mandando dados à organização desta chave de API
+# (gere em Chaves de API no console do Argos). Vazia = sem demo.
+demo_argos_api_key = ""
+
 # Liga/desliga para apresentações: guarda os dados num snapshot ao destruir e restaura na próxima vez.
 db_skip_final_snapshot = false
 # db_snapshot_identifier = "argos-prod-final-xxxxxx" # nome mostrado por terraform output db_final_snapshot_name
