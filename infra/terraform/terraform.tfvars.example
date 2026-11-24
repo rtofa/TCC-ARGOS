@@ -45,7 +45,7 @@ cohere_api_key = ""
 # smtp_password = "..."
 # mail_from     = "noreply@seudominio.com.br"
 
-# Dados de demonstração: OpenTelemetry Demo num EC2 t3.medium mandando dados à organização desta chave de API
+# Dados de demonstração: OpenTelemetry Demo num EC2 c7i-flex.large mandando dados à organização desta chave de API
 # (gere em Chaves de API no console do Argos). Vazia = sem demo.
 demo_argos_api_key = ""
 

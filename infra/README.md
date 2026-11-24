@@ -23,7 +23,7 @@ backend ──► Groq / OpenAI / Cohere / Slack / Discord (saída pela internet
 | CloudWatch | Logs dos dois serviços (14 dias) |
 | Orçamento | Alerta por e-mail em 80% do gasto real e 100% do previsto (se `alert_email` for informado) |
 | Domínio (opcional) | Certificado ACM + registro no Route 53 + HTTPS direto no ALB (aí o CloudFront não é criado) |
-| Demo (opcional) | EC2 `t3.medium` com a OpenTelemetry Demo mandando dados à sua organização (veja "Dados de demonstração") |
+| Demo (opcional) | EC2 `c7i-flex.large` com a OpenTelemetry Demo mandando dados à sua organização (veja "Dados de demonstração") |
 
 As tasks ficam em subnets públicas com IP público para sair à internet sem NAT Gateway (cerca de 32 USD/mês). Os security groups só aceitam conexões vindas do ALB, e o banco fica em subnet privada.
 
@@ -164,7 +164,7 @@ O Argos não gera dados sozinho: ele recebe a telemetria das aplicações monito
    As falhas disponíveis são `cartFailure`, `productCatalogFailure`, `paymentFailure` e `adFailure`. O script usa o SSM Run Command, sem SSH nem porta aberta.
 
 Detalhes:
-- Custo: cerca de 0,05 USD por hora (`t3.medium`, disco e IP). A demo 3.1.0 já vem sem Jaeger, Grafana, Prometheus e OpenSearch (o Argos faz esse papel) e cabe em 4 GB; se faltar memória, use `demo_instance_type = "t3.large"`.
+- Custo: cerca de 0,09 USD por hora (`c7i-flex.large`, disco e IP). A demo 3.1.0 já vem sem Jaeger, Grafana, Prometheus e OpenSearch (o Argos faz esse papel) e cabe em 4 GB; se faltar memória, use `demo_instance_type = "m7i-flex.large"` (8 GB). Contas no plano gratuito só aceitam tipos elegíveis ao free tier (`aws ec2 describe-instance-types --filters Name=free-tier-eligible,Values=true`).
 - O `terraform destroy` apaga o EC2 junto. A chave fica guardada no banco, então continua valendo depois de restaurar o snapshot.
 - A loja não fica aberta para a internet. Para abri-la (porta 8080, com o gerador de carga em `/loadgen/` e as flags em `/feature`), coloque o seu IP em `demo_allowed_cidrs = ["<seu IP>/32"]`.
 - O gerador de carga manda dados sem parar, e o banco ainda não apaga telemetria antiga: não deixe a demo ligada por semanas.

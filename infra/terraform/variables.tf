@@ -57,9 +57,9 @@ variable "demo_argos_api_key" {
 }
 
 variable "demo_instance_type" {
-  description = "Tipo do EC2 da demo. t3.medium (4 GB) cabe a demo enxuta; use t3.large se faltar memória."
+  description = "Tipo do EC2 da demo. c7i-flex.large (4 GB) cabe a demo enxuta; m7i-flex.large (8 GB) se faltar memória. Contas no plano gratuito só aceitam tipos elegíveis ao free tier."
   type        = string
-  default     = "t3.medium"
+  default     = "c7i-flex.large"
 }
 
 variable "demo_allowed_cidrs" {

@@ -194,8 +194,8 @@ run "demo_opentelemetry_no_ec2" {
   }
 
   assert {
-    condition     = length(aws_instance.demo) == 1 && aws_instance.demo[0].instance_type == "t3.medium"
-    error_message = "Com a chave, a demo sobe num t3.medium."
+    condition     = length(aws_instance.demo) == 1 && aws_instance.demo[0].instance_type == "c7i-flex.large"
+    error_message = "Com a chave, a demo sobe num c7i-flex.large (elegível ao free tier)."
   }
 
   assert {

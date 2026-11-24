@@ -4,7 +4,8 @@
 # - os dados vão para a organização da chave informada (a sua), em vez de criar uma "Loja Demo" com senha pública;
 # - a chave fica no SSM e o EC2 a lê ao ligar, então não aparece no user_data;
 # - nenhuma porta aberta para a internet: as falhas são ligadas por SSM (infra/scripts/demo-failure.ps1);
-# - t3.medium: a demo 3.1.0 já vem sem Jaeger/Grafana/Prometheus/OpenSearch (o Argos faz esse papel) e cabe em 4 GB.
+# - c7i-flex.large (4 GB): a demo 3.1.0 já vem sem Jaeger/Grafana/Prometheus/OpenSearch (o Argos faz esse papel) e
+#   cabe em 4 GB. Contas no plano gratuito só aceitam tipos elegíveis ao free tier (t3.medium é recusado).
 # Só é criada com demo_argos_api_key preenchida. O destroy do ambiente apaga o EC2 junto; a chave continua válida no
 # snapshot do banco, então no dia da apresentação basta religar.
 
