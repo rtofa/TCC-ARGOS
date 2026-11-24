@@ -4,17 +4,20 @@ import { api, query } from '../api.js'
 import { useAsync } from '../hooks/useApi.js'
 import { Loading, ErrorState } from '../components/States.jsx'
 import { SeverityBadge } from '../components/Badges.jsx'
+import DateCalendar from '../components/DateCalendar.jsx'
 import IncidentsPerDay from '../components/IncidentsPerDay.jsx'
 import PageGuide from '../components/PageGuide.jsx'
+import { dateRangeToInstants, formatBrDate, formatShortBrDate } from '../dates.js'
 import { SEVERITIES, STATUS_LABEL, formatDuration } from '../format.js'
 
-const PERIODS = [
-  ['24h', 'Últimas 24 h'],
-  ['7d', '7 dias'],
-  ['30d', '30 dias'],
-  ['90d', '90 dias'],
-]
 const PERIOD_HOURS = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30, '90d': 24 * 90 }
+const PERIOD_LABELS = { '24h': 'Últimas 24 h', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias', '90d': 'Últimos 90 dias' }
+const CALENDAR_PRESETS = [
+  { id: '24h', label: '24 h' },
+  { id: '7d', label: '7 dias' },
+  { id: '30d', label: '30 dias' },
+  { id: '90d', label: '90 dias' },
+]
 const ACTIVE = ['OPEN', 'INVESTIGATING', 'MITIGATED']
 const DAY_MS = 86400e3
 const DORA_LEVEL_LABEL = { ELITE: 'Elite', HIGH: 'Alto', MEDIUM: 'Médio', LOW: 'Baixo', 'N/A': 'Sem amostra' }
@@ -79,18 +82,21 @@ function buildServiceReliability(incidents, deploys) {
     .slice(0, 10)
 }
 
-async function loadOverview({ period, service }) {
+async function loadOverview({ period, dateFrom, dateTo, service }) {
   const now = Date.now()
-  const openedFrom = new Date(now - PERIOD_HOURS[period] * 3600e3).toISOString()
-  const chartFrom = new Date(now - 14 * DAY_MS).toISOString()
+  const customRange = dateRangeToInstants(dateFrom, dateTo)
+  const openedFrom = customRange.from ?? new Date(now - PERIOD_HOURS[period || '30d'] * 3600e3).toISOString()
+  const openedTo = customRange.to
+  const chartEnd = openedTo ? Date.parse(openedTo) - 1000 : now
+  const chartFrom = new Date(chartEnd - 14 * DAY_MS).toISOString()
   const cleanService = service.trim() || undefined
 
   const [metrics, dora, periodList, chartIncidents, deploys, ...counts] = await Promise.all([
-    api.get(`/incidents/metrics${query({ openedFrom, groupBy: 'severity' })}`),
-    api.get(`/metrics/dora${query({ from: openedFrom, service: cleanService })}`).catch(() => null),
-    api.get(`/incidents${query({ openedFrom, size: 100 })}`),
-    api.get(`/incidents${query({ openedFrom: chartFrom, size: 100 })}`),
-    api.get(`/deploys${query({ from: openedFrom, service: cleanService, size: 100 })}`),
+    api.get(`/incidents/metrics${query({ openedFrom, openedTo, groupBy: 'severity' })}`),
+    api.get(`/metrics/dora${query({ from: openedFrom, to: openedTo, service: cleanService })}`).catch(() => null),
+    api.get(`/incidents${query({ openedFrom, openedTo, size: 100 })}`),
+    api.get(`/incidents${query({ openedFrom: chartFrom, openedTo, size: 100 })}`),
+    api.get(`/deploys${query({ from: openedFrom, to: openedTo, service: cleanService, size: 100 })}`),
     ...ACTIVE.map((status) => api.get(`/incidents${query({ status, size: 1 })}`)),
   ])
 
@@ -99,6 +105,7 @@ async function loadOverview({ period, service }) {
 
   return {
     now,
+    chartEnd,
     metrics,
     dora,
     periodIncidents: filterBySvc(periodList.content),
@@ -259,14 +266,21 @@ function StatusStrip({ byStatus, total }) {
 
 export default function Overview() {
   const [period, setPeriod] = useState('30d')
+  const [dateRange, setDateRange] = useState({ dateFrom: '', dateTo: '' })
   const [serviceInput, setServiceInput] = useState('')
   const [serviceFilter, setServiceFilter] = useState('')
 
   const { data, error, loading, reload } = useAsync(
-    `${period}:${serviceFilter}`,
-    () => loadOverview({ period, service: serviceFilter }),
+    `${period}:${dateRange.dateFrom}:${dateRange.dateTo}:${serviceFilter}`,
+    () => loadOverview({ period, dateFrom: dateRange.dateFrom, dateTo: dateRange.dateTo, service: serviceFilter }),
     15000,
   )
+
+  const periodLabel = dateRange.dateFrom
+    ? dateRange.dateTo && dateRange.dateTo !== dateRange.dateFrom
+      ? `${formatShortBrDate(dateRange.dateFrom)} – ${formatShortBrDate(dateRange.dateTo)}`
+      : formatBrDate(dateRange.dateFrom)
+    : PERIOD_LABELS[period] ?? 'Últimos 30 dias'
 
   const reliability = data ? buildServiceReliability(data.periodIncidents, data.deploys) : []
   const resolvedCount = data ? data.periodIncidents.filter((i) => i.status === 'RESOLVED').length : 0
@@ -310,13 +324,23 @@ export default function Overview() {
             )}
           </form>
 
-          <div className="segmented" role="group" aria-label="Período">
-            {PERIODS.map(([value, label]) => (
-              <button key={value} type="button" aria-pressed={period === value} onClick={() => setPeriod(value)}>
-                {label}
-              </button>
-            ))}
-          </div>
+          <DateCalendar
+            label={periodLabel}
+            active
+            allowClear={false}
+            align="right"
+            dateFrom={dateRange.dateFrom}
+            dateTo={dateRange.dateTo}
+            presets={CALENDAR_PRESETS}
+            onSelectDate={({ dateFrom, dateTo }) => {
+              setPeriod('')
+              setDateRange({ dateFrom, dateTo })
+            }}
+            onSelectPreset={(preset) => {
+              setDateRange({ dateFrom: '', dateTo: '' })
+              setPeriod(preset)
+            }}
+          />
         </div>
       </header>
 
@@ -335,7 +359,7 @@ export default function Overview() {
       {data && (
         <div className={loading ? 'is-refreshing' : undefined}>
           <div className="tiles">
-            <Tile label="Abertos no período" value={data.metrics.overall.count} hint={PERIODS.find(([v]) => v === period)[1]} />
+            <Tile label="Abertos no período" value={data.metrics.overall.count} hint={periodLabel} />
             <Tile
               label="Taxa de resolução"
               value={resolutionRate === null ? '—' : `${resolutionRate}%`}
@@ -353,7 +377,7 @@ export default function Overview() {
               <h2>Incidentes abertos por dia & Marcadores de Deploy (14 dias)</h2>
               <Link to="/deploys">Ver histórico de deploys</Link>
             </div>
-            <IncidentsPerDay days={buildDailySeries(data.chartIncidents, data.deploys, 14, data.now)} />
+            <IncidentsPerDay days={buildDailySeries(data.chartIncidents, data.deploys, 14, data.chartEnd)} />
           </section>
 
           <div className="grid-2">

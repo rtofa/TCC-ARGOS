@@ -7,18 +7,30 @@ import { SeverityBadge, StatusBadge, ServiceChips } from '../components/Badges.j
 import DateCalendar from '../components/DateCalendar.jsx'
 import { Icon } from '../components/Icon.jsx'
 import PageGuide from '../components/PageGuide.jsx'
-import { dateRangeToInstants, formatBrDate, formatShortBrDate } from '../dates.js'
+import { dateRangeToInstants, formatBrDate, formatShortBrDate, localIsoDate } from '../dates.js'
 import { formatDateTime, formatMs, timeAgo } from '../format.js'
 
-const PERIODS = [
-  ['15m', '15 min', 15 * 60e3],
-  ['1h', '1 hora', 60 * 60e3],
-  ['6h', '6 horas', 6 * 60 * 60e3],
-  ['24h', '24 horas', 24 * 60 * 60e3],
-  ['7d', '7 dias', 7 * 24 * 60 * 60e3],
-  ['30d', '30 dias', 30 * 24 * 60 * 60e3],
+const PRESET_MS = {
+  '15m': 15 * 60e3,
+  '1h': 60 * 60e3,
+  '6h': 6 * 60 * 60e3,
+  '24h': 24 * 60 * 60e3,
+  '7d': 7 * 24 * 60 * 60e3,
+  '30d': 30 * 24 * 60 * 60e3,
+}
+const PRESET_LABELS = {
+  '15m': 'Últimos 15 min',
+  '1h': 'Última 1 h',
+  '6h': 'Últimas 6 h',
+  '24h': 'Últimas 24 h',
+  '7d': 'Últimos 7 dias',
+  '30d': 'Últimos 30 dias',
+}
+const CALENDAR_PRESETS = [
+  { id: '24h', label: '24 h' },
+  { id: '7d', label: '7 dias' },
+  { id: '30d', label: '30 dias' },
 ]
-const PERIOD_MS = Object.fromEntries(PERIODS.map(([id, , ms]) => [id, ms]))
 const FORMATS = [
   { id: 'csv', label: 'Baixar CSV (Excel)', primary: true },
   { id: 'json', label: 'Baixar JSON' },
@@ -42,13 +54,13 @@ function StatCard({ label, value, hint, tone }) {
 export default function Reports() {
   const [params, setParams] = useSearchParams()
   const [now, setNow] = useState(currentMinute)
-  const [calendarOpen, setCalendarOpen] = useState(false)
   const [downloading, setDownloading] = useState('')
   const [notice, setNotice] = useState(null)
 
-  const period = PERIOD_MS[params.get('period')] ? params.get('period') : '24h'
-  const dateFrom = params.get('dateFrom') ?? ''
-  const dateTo = params.get('dateTo') ?? ''
+  const period = PRESET_MS[params.get('period')] ? params.get('period') : ''
+  const defaultToday = !period && !params.get('dateFrom') ? localIsoDate() : ''
+  const dateFrom = params.get('dateFrom') ?? defaultToday
+  const dateTo = params.get('dateTo') ?? defaultToday
   const service = params.get('service') ?? ''
 
   function update(changes) {
@@ -62,7 +74,7 @@ export default function Reports() {
   }
 
   const customRange = dateRangeToInstants(dateFrom, dateTo)
-  const fromIso = customRange.from ?? new Date(now - PERIOD_MS[period]).toISOString()
+  const fromIso = customRange.from ?? new Date(now - PRESET_MS[period || '24h']).toISOString()
   const toIso = customRange.to ?? new Date(now).toISOString()
 
   const servicesQuery = useApi(`/telemetry/services${query({ from: fromIso, to: toIso })}`)
@@ -94,7 +106,7 @@ export default function Reports() {
     ? dateTo && dateTo !== dateFrom
       ? `${formatShortBrDate(dateFrom)} – ${formatShortBrDate(dateTo)}`
       : formatBrDate(dateFrom)
-    : 'Calendário'
+    : PRESET_LABELS[period] ?? 'Selecionar data'
 
   const d = report.data
 
@@ -133,7 +145,7 @@ export default function Reports() {
           id="reports-page"
           summary="Gera relatórios completos para auditoria, reuniões de SRE ou apresentação acadêmica diretamente a partir da telemetria OTLP recebida dos microsserviços."
           steps={[
-            'Escolha a janela temporal (atalhos ou Calendário) e filtre todos os microsserviços ou um serviço específico.',
+            'Use o Calendário para escolher o dia ou intervalo desejado e filtre todos ou um microsserviço específico.',
             'Confira na prévia ao vivo os indicadores de saúde, dependências, métricas OTLP, traces com erro e logs já mascarados (LGPD).',
             'Exporte no formato ideal: CSV (Excel/Sheets), JSON estruturado, HTML autônomo, Markdown (.md) ou PDF via impressão.',
           ]}
@@ -148,40 +160,19 @@ export default function Reports() {
 
       <section className="card filters no-print" aria-label="Filtros do relatório">
         <div className="filter-group">
-          <span className="filter-label">Janela</span>
-          <div className="segmented" role="group" aria-label="Período do relatório">
-            {PERIODS.map(([id, label]) => (
-              <button
-                key={id}
-                type="button"
-                aria-pressed={!dateFrom && period === id}
-                onClick={() => update({ period: id, dateFrom: '', dateTo: '' })}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="filter-group">
-          <button
-            type="button"
-            className="toggle calendar-trigger"
-            aria-pressed={calendarOpen || Boolean(dateFrom)}
-            onClick={() => setCalendarOpen((v) => !v)}
-          >
-            <Icon name="calendar" size={14} />
-            <span>{dateLabel}</span>
-          </button>
-          {dateFrom && (
-            <button
-              type="button"
-              className="link-button small"
-              onClick={() => update({ dateFrom: '', dateTo: '' })}
-            >
-              Limpar data
-            </button>
-          )}
+          <span className="filter-label">Período</span>
+          <DateCalendar
+            label={dateLabel}
+            active
+            allowClear={false}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            presets={CALENDAR_PRESETS}
+            onSelectDate={({ dateFrom: nextFrom, dateTo: nextTo }) =>
+              update({ period: '', dateFrom: nextFrom, dateTo: nextTo })
+            }
+            onSelectPreset={(preset) => update({ period: preset, dateFrom: '', dateTo: '' })}
+          />
         </div>
 
         <label className="filter-group">
@@ -196,21 +187,10 @@ export default function Reports() {
           </select>
         </label>
 
-        <button type="button" className="btn btn-small" onClick={() => setNow(currentMinute())}>
+        <button type="button" className="btn btn-small" onClick={() => setNow(currentMinute())} aria-label="Atualizar relatório">
           <Icon name="refresh" size={14} />
         </button>
       </section>
-
-      {calendarOpen && (
-        <div className="no-print">
-          <DateCalendar
-            dateFrom={dateFrom}
-            dateTo={dateTo}
-            onChange={({ dateFrom: nextFrom, dateTo: nextTo }) => update({ dateFrom: nextFrom, dateTo: nextTo })}
-            onClose={() => setCalendarOpen(false)}
-          />
-        </div>
-      )}
 
       {report.error && <ErrorState error={report.error} onRetry={report.reload} />}
       {!d && !report.error && <Loading label="Consolidando dados dos microsserviços…" />}

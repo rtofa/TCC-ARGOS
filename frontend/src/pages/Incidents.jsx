@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { query } from '../api.js'
 import { useApi } from '../hooks/useApi.js'
@@ -13,15 +13,96 @@ import { dateRangeToInstants, formatBrDate, formatShortBrDate, monthBounds, pars
 import { SEVERITIES, STATUSES, STATUS_LABEL, formatDuration, timeAgo } from '../format.js'
 
 const PERIOD_HOURS = { '24h': 24, '7d': 24 * 7, '30d': 24 * 30 }
+const PERIOD_LABELS = { '24h': 'Últimas 24 h', '7d': 'Últimos 7 dias', '30d': 'Últimos 30 dias' }
+const CALENDAR_PRESETS = [
+  { id: '24h', label: '24 h' },
+  { id: '7d', label: '7 dias' },
+  { id: '30d', label: '30 dias' },
+]
 const PAGE_SIZE = 20
 
 const currentMinute = () => Math.floor(Date.now() / 60000) * 60000
 
-function Toggle({ pressed, onClick, children }) {
+const STATUS_OPTIONS = STATUSES.map((value) => ({ value, label: STATUS_LABEL[value] }))
+const SEVERITY_OPTIONS = SEVERITIES.map((value) => ({ value, label: value }))
+
+function FilterDropdown({ label, emptyLabel, pluralLabel, options, selected, onToggle, onClear }) {
+  const [open, setOpen] = useState(false)
+  const rootRef = useRef(null)
+
+  useEffect(() => {
+    if (!open) return undefined
+    function handleOutside(event) {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false)
+    }
+    function handleKey(event) {
+      if (event.key === 'Escape') setOpen(false)
+    }
+    document.addEventListener('mousedown', handleOutside)
+    document.addEventListener('keydown', handleKey)
+    return () => {
+      document.removeEventListener('mousedown', handleOutside)
+      document.removeEventListener('keydown', handleKey)
+    }
+  }, [open])
+
+  const selectedLabels = options.filter((o) => selected.includes(o.value)).map((o) => o.label)
+  let summary = emptyLabel
+  if (selectedLabels.length === 1) summary = selectedLabels[0]
+  else if (selectedLabels.length > 1) summary = `${selectedLabels.length} ${pluralLabel}`
+
   return (
-    <button type="button" className="toggle" aria-pressed={pressed} onClick={onClick}>
-      {children}
-    </button>
+    <div className="filter-dropdown" ref={rootRef}>
+      <button
+        type="button"
+        className="toggle filter-dropdown-trigger"
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-pressed={selected.length > 0}
+        aria-label={label}
+        title={selectedLabels.length > 0 ? selectedLabels.join(', ') : undefined}
+        onClick={() => setOpen((was) => !was)}
+      >
+        <span>{summary}</span>
+        <Icon name="chevron" size={14} className={open ? 'is-open' : undefined} />
+      </button>
+      {open && (
+        <div className="card filter-dropdown-menu" role="listbox" aria-multiselectable="true" aria-label={label}>
+          {options.map((opt) => {
+            const checked = selected.includes(opt.value)
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={checked}
+                className={`filter-dropdown-option${checked ? ' is-selected' : ''}`}
+                onClick={() => onToggle(opt.value)}
+              >
+                <span className="filter-dropdown-check" aria-hidden="true">
+                  {checked && <Icon name="check" size={12} strokeWidth={2.5} />}
+                </span>
+                <span>{opt.label}</span>
+              </button>
+            )
+          })}
+          {selected.length > 0 && (
+            <div className="filter-dropdown-footer">
+              <button
+                type="button"
+                className="btn-link"
+                onClick={() => {
+                  onClear()
+                  setOpen(false)
+                }}
+              >
+                Limpar
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -82,7 +163,7 @@ export default function Incidents() {
     ? dateTo && dateTo !== dateFrom
       ? `${formatShortBrDate(dateFrom)} – ${formatShortBrDate(dateTo)}`
       : formatBrDate(dateFrom)
-    : 'Calendário'
+    : PERIOD_LABELS[period] ?? 'Qualquer data'
 
   return (
     <>
@@ -102,7 +183,7 @@ export default function Incidents() {
         id="incidents"
         summary="Central de gestão de crises: incidentes são abertos manualmente, por webhooks de alerta (agrupados por serviço) ou pelo monitor automático de SLO OTLP."
         steps={[
-          'Filtre por status, severidade, período ou use o Calendário para visualizar dias com incidentes e filtrar por data ou intervalo.',
+          'Filtre por status, severidade ou use o Calendário para visualizar dias com incidentes e selecionar uma data ou intervalo.',
           'Clique em um incidente para abrir a Sala de Guerra com linha do tempo, deploys relacionados e impacto financeiro.',
           'Atualize o status (Aberto → Investigando → Mitigado → Resolvido) para alimentar MTTA e MTTR.',
         ]}
@@ -111,66 +192,51 @@ export default function Incidents() {
       <section className="card filters" aria-label="Filtros">
         <div className="filter-group">
           <span className="filter-label">Status</span>
-          {STATUSES.map((status) => (
-            <Toggle key={status} pressed={statuses.includes(status)} onClick={() => toggle('status', statuses, status)}>
-              {STATUS_LABEL[status]}
-            </Toggle>
-          ))}
+          <FilterDropdown
+            label="Filtrar por status"
+            emptyLabel="Todos"
+            pluralLabel="selecionados"
+            options={STATUS_OPTIONS}
+            selected={statuses}
+            onToggle={(status) => toggle('status', statuses, status)}
+            onClear={() => update({ status: [] })}
+          />
         </div>
         <div className="filter-group">
           <span className="filter-label">Severidade</span>
-          {SEVERITIES.map((severity) => (
-            <Toggle key={severity} pressed={severities.includes(severity)} onClick={() => toggle('severity', severities, severity)}>
-              {severity}
-            </Toggle>
-          ))}
+          <FilterDropdown
+            label="Filtrar por severidade"
+            emptyLabel="Todas"
+            pluralLabel="selecionadas"
+            options={SEVERITY_OPTIONS}
+            selected={severities}
+            onToggle={(severity) => toggle('severity', severities, severity)}
+            onClear={() => update({ severity: [] })}
+          />
         </div>
         <div className="filter-group">
-          <label className="filter-group" style={{ margin: 0 }}>
-            <span className="filter-label">Aberto em</span>
-            <select
-              value={dateFrom ? '' : period}
-              onChange={(e) => update({ status: statuses, severity: severities, period: e.target.value, dateFrom: '', dateTo: '' })}
-            >
-              <option value="">{dateFrom ? 'Data personalizada' : 'Qualquer data'}</option>
-              <option value="24h">Últimas 24 h</option>
-              <option value="7d">Últimos 7 dias</option>
-              <option value="30d">Últimos 30 dias</option>
-            </select>
-          </label>
-          <button
-            type="button"
-            className="toggle calendar-trigger"
-            aria-pressed={calendarOpen || Boolean(dateFrom)}
-            onClick={() => setCalendarOpen((v) => !v)}
-          >
-            <Icon name="calendar" size={14} />
-            <span>{dateButtonLabel}</span>
-          </button>
-          {dateFrom && (
-            <button
-              type="button"
-              className="link-button small"
-              onClick={() => update({ status: statuses, severity: severities, period: '', dateFrom: '', dateTo: '' })}
-            >
-              Limpar
-            </button>
-          )}
+          <span className="filter-label">Período</span>
+          <DateCalendar
+            label={dateButtonLabel}
+            active={Boolean(dateFrom || period)}
+            dateFrom={dateFrom}
+            dateTo={dateTo}
+            dayMeta={buildDayMeta(calendarDays.data)}
+            presets={CALENDAR_PRESETS}
+            onOpenChange={setCalendarOpen}
+            onMonthChange={(year, month) => setCalendarMonth({ year, month })}
+            onSelectDate={({ dateFrom: nextFrom, dateTo: nextTo }) =>
+              update({ status: statuses, severity: severities, period: '', dateFrom: nextFrom, dateTo: nextTo })
+            }
+            onSelectPreset={(preset) =>
+              update({ status: statuses, severity: severities, period: preset, dateFrom: '', dateTo: '' })
+            }
+            onClear={() =>
+              update({ status: statuses, severity: severities, period: '', dateFrom: '', dateTo: '' })
+            }
+          />
         </div>
       </section>
-
-      {calendarOpen && (
-        <DateCalendar
-          dateFrom={dateFrom}
-          dateTo={dateTo}
-          dayMeta={buildDayMeta(calendarDays.data)}
-          onMonthChange={(year, month) => setCalendarMonth({ year, month })}
-          onChange={({ dateFrom: nextFrom, dateTo: nextTo }) =>
-            update({ status: statuses, severity: severities, period: '', dateFrom: nextFrom, dateTo: nextTo })
-          }
-          onClose={() => setCalendarOpen(false)}
-        />
-      )}
 
       {error && <ErrorState error={error} onRetry={reload} />}
       {!data && !error && <Loading />}
